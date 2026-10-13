@@ -55,6 +55,11 @@ DEFAULTS = {
         "min_scenarios": 3,
         "open_questions": "open-questions.md",
         "open_question_row": r"^\|\s*[A-Za-zА-Яа-яЁё]+-\d+\s*\|",
+        "open_question_id": r"(?<![\w-])ОВ-(?:\w+-)*\d+(?![\w-])",   # ID открытого вопроса в тексте
+        # lint fmea-scenarios: строка FMEA файла рядом со спекой ↔ сценарий отказа с тем же именем
+        "fmea": {"file": "interfaces.md", "section": "Отказы (FMEA)"},
+        # lint rtm: строка RTM = требование («Реализует задача», число сценариев)
+        "rtm": {"file": "traceability.md", "id_col": "Требование", "task_col": "Задач", "count_col": "Сценари"},
         "approvals": {"enabled": False, "file": "approvals.md", "default": "", "by_title": {},
                       "version_ignore": [r"^ID:.*$", r"<a id=[^>]*></a>"]},
     },
@@ -68,6 +73,12 @@ DEFAULTS = {
         "subtasks": {"section": "Декомпозиция", "hours_col": 3, "done_col": 4, "min": 2, "max": 8, "total_label": "Итого"},
         "roadmap": "ROADMAP.md",
         "roadmap_hours_col": 0,
+        # lint task-acceptance-coverage: требование из «Закрывает требования» названо в этих разделах (ID или имя сценария)
+        "acceptance_sections": ["Приёмка", "Декомпозиция"],
+        "acceptance_exempt": [],          # заголовки требований (начало), которые проверяются общей подзадачей
+        # lint task-estimate-range: сумма подзадач в днях — в диапазоне оценки шапки задачи
+        "estimate": {"table": "| Этап |", "column": "Человек", "hours_per_day": 8, "tolerance_days": 0.25},
+        "open_items_section": "Что проработать",
         "roadmap_total_label": "Итого",
         "derived": [],
     },
@@ -92,16 +103,31 @@ DEFAULTS = {
             {"name": "Почему так", "required": True},
         ],
         "screens": {"section": "Экраны", "status_col": "Статус", "operation_col": "Операция", "new": ["новое", "доработка"]},
+        # lint block-refs: ID этих каталогов, названные в карточке, должны быть в своём поле
+        "refs_cover": [{"kind": "requirement", "field": "Требования"}, {"kind": "table", "field": "Данные"}],
+        # карточки из единиц YAML ([[data.kinds]]): вид единицы, поле карточки → ключ YAML, вид блока → ключ раздела
+        "data_kind": "",
+        "data_map": {},
+        "data_kind_field": "kind",
+        "data_sections": {},
     },
+    # Данные в YAML по единице (rules/data.md#yaml): [[data.kinds]] name, glob, id, id_pattern, title, component, regen, fields
+    "data": {"kinds": [], "order_file": "_order.yaml", "require_yaml": False, "methodology": "data.md#yaml"},
+    # Учёт расхода токенов (rules/token-costs.md): журнал, генерируемая страница, названия процессов, допуск
+    "costs": {"file": "", "page": "", "titles": {}, "tolerance": 2},
     "ids": {},
     "graph": {"nodes": {}, "edges": []},
     "lint": {"enable": ["subtasks", "requirement-scenarios", "block-card", "block-screens", "recommended-sections",
-                        "task-acceptance"],
-             "placeholders_exclude": ["templates/**"]},
+                        "task-acceptance", "task-acceptance-coverage", "task-estimate-range", "open-question-refs",
+                        "fmea-scenarios", "rtm", "block-refs", "deploy-migrations"],
+             "placeholders_exclude": ["templates/**"],
+             "deploy": {"types": ["Deploy"], "section": "Обновление и откат", "words": ["миграц"], "data_field": "Данные"}},
     "check": {"disable": [], "entries": ["README.md", "AGENTS.md", "CLAUDE.md"], "index_names": ["README.md", "index.md"],
               "orphans_ignore": [], "nav": [], "nav_base": "", "anchor_styles": ["github", "mkdocs"]},
     "tooling": {"docs": ["AGENTS.md", "CLAUDE.md", "skills/*.md", "agents/*.md", ".claude/skills/*/SKILL.md", ".claude/agents/*.md"]},
-    "review": {"checklist_sections": ["Чек-лист", "Из чего состоит"]},
+    # review-batch: карточки страниц для всех ролей; card в [[types]] — task | block | unit | sections | плагин
+    "review": {"checklist_sections": ["Чек-лист", "Из чего состоит"], "card_max": 2500, "block_max": 1500,
+               "batch_max": 30, "chars_per_token": 3},
     "move": {"extra": ["**/*.py", "**/*.toml", "**/*.json", "**/*.yml", "**/*.yaml", "**/*.txt"]},
     "rnd": {"dir": "rnd", "template": "templates/rnd.md", "index": "rnd/README.md", "check": True, "check_glob": [],
             "index_row": "| [{title}]({file}) | {title} | черновик | v3.1 |"},

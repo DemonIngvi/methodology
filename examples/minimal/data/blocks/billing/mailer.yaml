@@ -1,0 +1,14 @@
+# Блок «Рассылка счетов» — единица данных (rules/data.md#yaml); читать: tools/doc unit billing/mailer
+title: Рассылка счетов
+kind: сервис
+does: [отправляет выставленный счёт клиенту, помечает счёт «не отправлен» или «нет адреса»]
+tech: Python 3.12, очередь задач планировщика
+stories: [US-BIL-1]
+io: ['← планировщик: ID счёта', '→ почтовый сервис: I1']
+data: [invoices]
+params: [mail.retries]
+reqs: [R-BIL-2]
+tasks: ['1.1']
+on_failure: почтовый сервис недоступен → mail.retries повторов, затем «не отправлен»
+why: повтор безопасен — отправка идемпотентна по ID счёта (I1)
+operations: ['send_invoice(id) — планировщик — I1']

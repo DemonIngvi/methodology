@@ -17,6 +17,9 @@
     @ref_kind("table")                       # каталог ID для ссылок карточек блоков: вернуть (regex, множество ID)
     def tables(ctx): ...
 
+    @card_kind("api")                        # карточка страницы для review-batch: [[types]] card = "api"; вернуть строки
+    def api_card(ctx, page, text): ...
+
 Настройки плагина — в таблице конфига `[plugin.<имя>]`, доступны как ctx.get("plugin.<имя>.<ключ>").
 """
 import importlib
@@ -31,6 +34,7 @@ class Registry:
         self.check_rules = {}
         self.commands = {}
         self.ref_kinds = {}
+        self.card_kinds = {}
         self.loaded = []
 
 
@@ -62,6 +66,13 @@ def command(name: str, help: str = ""):
 def ref_kind(name: str):
     def deco(fn):
         REGISTRY.ref_kinds[name] = fn
+        return fn
+    return deco
+
+
+def card_kind(name: str):
+    def deco(fn):
+        REGISTRY.card_kinds[name] = fn
         return fn
     return deco
 

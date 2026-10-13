@@ -1,6 +1,6 @@
 # billing — спека
 
-← [архитектура](../../architecture.md) · [параметры и интерфейсы](interfaces.md) · [открытые вопросы](open-questions.md) · [подтверждения](approvals.md)
+← [архитектура](../../architecture.md) · [параметры и интерфейсы](interfaces.md) · [открытые вопросы](open-questions.md) · [трассировка](traceability.md) · [подтверждения](approvals.md)
 
 ## Purpose
 

@@ -19,6 +19,17 @@ REPO = Path(__file__).resolve().parent.parent
 HAS_GIT = shutil.which("git") is not None
 
 
+def _has_yaml():
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+HAS_YAML = _has_yaml()  # данные YAML по единице: без PyYAML их тесты пропускаются, а check пропускает yaml-check
+
+
 def _has_toml():
     try:
         import tomllib  # noqa: F401
@@ -310,7 +321,8 @@ class DocTest(unittest.TestCase):
     # ---------- blocks / diagram / rnd / plugins / init ----------
     def test_blocks(self):
         rc, out, _ = self.run_doc("blocks")
-        self.assertIn("блоков 1, карточка заполнена полностью у 1", out)
+        n = 2 if HAS_YAML else 1  # второй блок — единица YAML data/blocks/billing/mailer.yaml
+        self.assertIn(f"блоков {n}, карточка заполнена полностью у {n}", out)
         self.edit("components/billing/blocks/exporter.md", "| Технология | Python 3.12 |", "| Технология | <технология> |")
         rc, out, _ = self.run_doc("blocks")
         self.assertIn("нет: Технология", out)
@@ -397,6 +409,211 @@ class DocTest(unittest.TestCase):
         self.run_doc("approve", "design.md", "А", "ok", "x")
         self.assertNotIn(b"\r\n", (self.ex / "approvals.md").read_bytes())
         self.assertNotIn(b"\r\n", (self.ex / "approvals-summary.md").read_bytes())
+
+    # ---------- данные: YAML по единице ----------
+    @unittest.skipUnless(HAS_YAML, "нет PyYAML")
+    def test_yaml_check(self):
+        rc, out, _ = self.run_doc("yaml-check")
+        self.assertEqual((rc, out.strip()), (0, "yaml: замечаний нет"))
+        blk = "data/blocks/billing/mailer.yaml"
+        self.edit(blk, "kind: сервис", "kind: процесс")                                   # недопустимое значение
+        self.edit(blk, "tasks: ['1.1']", "tasks: ['9.9']")                                # ссылка на несуществующую задачу
+        self.edit(blk, "tech: Python 3.12, очередь задач планировщика", "tech: 3")        # тип
+        self.edit(blk, "stories: [US-BIL-1]", "stories: [US-BIL-9]")                      # ссылка на вид единиц data/
+        self.edit("data/stories/billing/US-BIL-1.yaml", "so_that: загрузить их в учётную систему без ручного сбора\n", "colour: red\n")
+        self.write("data/blocks/billing/new.yaml", "title: Новый\n")                       # нет в _order.yaml, нет полей
+        rc, out, _ = self.run_doc("yaml-check")
+        self.assertEqual(rc, 1)
+        for s in ("mailer.yaml: kind: «процесс» — допустимо: интерфейс, сервис, хранилище",
+                  "mailer.yaml: tasks[0]: task 9.9 не существует", "mailer.yaml: tech: нужно строка, а не число",
+                  "mailer.yaml: stories[0]: story US-BIL-9 не существует",
+                  "US-BIL-1.yaml: so_that: обязательное поле отсутствует", "US-BIL-1.yaml: colour: поле не описано в схеме вида",
+                  "new.yaml: kind: обязательное поле отсутствует", "_order.yaml: new не в списке"):
+            self.assertIn(s, out)
+        rc, out, _ = self.run_doc("check")                                                # yaml-check входит в check
+        self.assertEqual(rc, 1)
+        self.assertIn("yaml: data/blocks/billing/mailer.yaml: kind: «процесс»", out)
+        rc, out, _ = self.run_doc("yaml-check", "data/stories")                           # только папка
+        self.assertNotIn("mailer.yaml", out)
+        self.write("data/models/Broken.yaml", "name: [не закрыт\n")
+        rc, out, _ = self.run_doc("yaml-check", "data/models")
+        self.assertIn("Broken.yaml: не YAML", out)
+
+    @unittest.skipUnless(HAS_YAML, "нет PyYAML")
+    def test_yaml_fmt(self):
+        self.write("data/stories/billing/US-BIL-1.yaml",
+                   "# комментарий сохраняется\naccept: [a, b]\nreqs:\n- R-BIL-1\nwant: w\nrole: r\nso_that: s\n")
+        self.write("data/blocks/billing/zz.yaml", self.read("data/blocks/billing/mailer.yaml").replace("Рассылка счетов", "Другой"))
+        rc, out, _ = self.run_doc("yaml-fmt")
+        self.assertEqual(rc, 0)
+        self.assertIn("US-BIL-1.yaml", out)
+        self.assertEqual(self.read("data/stories/billing/US-BIL-1.yaml"),
+                         "# комментарий сохраняется\nrole: r\nwant: w\nso_that: s\nreqs: [R-BIL-1]\naccept: [a, b]\n")
+        self.assertEqual(self.read("data/blocks/billing/_order.yaml"), "- mailer\n- zz\n")
+        rc, out, _ = self.run_doc("yaml-fmt")
+        self.assertIn("отформатировано: 0", out)                                          # идемпотентно
+
+    @unittest.skipUnless(HAS_YAML, "нет PyYAML")
+    def test_unit_route_next(self):
+        rc, out, _ = self.run_doc("unit", "US-BIL-1")
+        self.assertEqual(rc, 0)
+        self.assertTrue(out.startswith("# data/stories/billing/US-BIL-1.yaml · вид story · ID US-BIL-1"))
+        self.assertIn("связано: requirement R-BIL-1, block billing/mailer (ссылается)", out)
+        rc, out, _ = self.run_doc("unit", "billing/mailer")
+        self.assertIn("связано: story US-BIL-1, table invoices, param mail.retries, requirement R-BIL-2, task 1.1", out)
+        self.assertIn("перегенерируется", out)
+        self.assertNotIn("screens", out)                                                  # пустые поля не выводятся
+        rc, out, _ = self.run_doc("unit", "Рассылка счетов")                              # по названию
+        self.assertIn("ID billing/mailer", out)
+        rc, out, _ = self.run_doc("unit", "data/models/Invoice.yaml")
+        self.assertIn("связано: interface I1", out)
+        rc, out, _ = self.run_doc("unit", "нет-такого")
+        self.assertIn("единица не найдена", out)
+        rc, out, _ = self.run_doc("route", "data/blocks/billing/mailer.yaml")
+        self.assertIn("Единица данных YAML, вид «block»", out)
+        self.assertIn("yaml-check data/blocks/billing/mailer.yaml", out)
+        self.assertIn("Подтверждают: А", out)
+        rc, out, _ = self.run_doc("next", "data/stories/billing/US-BIL-1.yaml")
+        self.assertIn("Источник данных (YAML, единица «story»)", out)
+        self.assertIn("Перегенерируется — один раз в конце пути изменений", out)
+        self.assertIn("Спека — проверить", out)
+
+    def test_without_pyyaml(self):
+        fake = self.tmp / "без-yaml"
+        fake.mkdir()
+        (fake / "yaml.py").write_text("raise ImportError('PyYAML не установлен (тест)')\n", encoding="utf-8")
+        env = {"PYTHONPATH": str(fake)}
+        rc, _, err = self.run_doc("yaml-check", env=env)
+        self.assertEqual(rc, 1)
+        self.assertIn("нужен PyYAML: pip install pyyaml", err)
+        rc, _, err = self.run_doc("unit", "US-BIL-1", env=env)
+        self.assertEqual(rc, 1)
+        self.assertIn("нужен PyYAML", err)
+        rc, out, err = self.run_doc("check", env=env)                                     # check не падает: пропуск с предупреждением
+        self.assertEqual(rc, 0, out + err)
+        self.assertIn("yaml-check пропущен — нет PyYAML", err)
+        self.write("doc.config.toml", self.read("doc.config.toml").replace("[costs]\n", "[data]\nrequire_yaml = true\n\n[costs]\n", 1))
+        rc, out, _ = self.run_doc("check", env=env)
+        self.assertEqual(rc, 1)
+        self.assertIn("yaml: нужен PyYAML", out)
+
+    # ---------- пакетная проверка ролями ----------
+    def test_review_batch(self):
+        rc, out, err = self.run_doc("review-batch", "billing")
+        self.assertEqual(rc, 0, err)
+        self.assertRegex(out, r"batch-billing-1\.md: страниц \d+, пар \d+, символов \d+, ≈\d+ ток\. всего, ≈\d+ на страницу")
+        self.assertNotIn("⚠️ lint", out)
+        t = (self.ex / ".doctool/review/batch-billing-1.md").read_text(encoding="utf-8")
+        for s in ("Вопросы ролей:", "- Т Тестировщик: как проверить", "approve-batch", "## tasks/1.1-invoice-export.md · роли: ВРТ",
+                  "## components/billing/blocks/exporter.md · роли: АРТ", "## deploy/billing.md · роли: ДБС",
+                  "## R-BIL-1 · роли: ТИ", "«Почтовый сервис недоступен»", "закрывает: R-BIL-1, R-BIL-2",
+                  "незакрытые замечания: Z-BIL-1", "## data/blocks/billing/mailer.yaml · роли: АРТ"):
+            self.assertIn(s, t)
+        for part in t.split("\n## ")[1:]:                                                 # лимиты карточек из конфига
+            self.assertLessEqual(len(part.split("\n", 2)[-1]), 2500, part[:80])
+        self.assertNotIn("](", t)                                                          # без ссылок Markdown
+        rc, out, _ = self.run_doc("review-batch", "billing", "--max", "2")                 # пачки по 2 страницы
+        self.assertIn("batch-billing-2.md", out)
+        self.edit("tasks/1.1-invoice-export.md", "| 1.1.2 | отправка через I1 с повтором | 3 |", "| 1.1.2 | отправка через I1 с повтором | 12 |")
+        self.edit("tasks/1.1-invoice-export.md", "| **Итого** | **6 ≈ 1 дн** |", "| **Итого** | **15 ≈ 2 дн** |")
+        rc, out, _ = self.run_doc("review-batch", "billing")
+        self.assertIn("⚠️ lint billing: пробелов", out)                                    # сначала автоматика
+        rc, out, _ = self.run_doc("review-batch", "нет-такого")
+        self.assertIn("⏳ нет", out)
+
+    def test_approve_batch(self):
+        self.assert_clean()
+        good = [{"page": "deploy/billing.md", "role": "Д", "ok": True, "comment": "развёртывание и откат описаны"},
+                {"page": "R-BIL-1", "role": "Т", "ok": True, "comment": "сценарии проверяемы"},
+                {"page": "tasks/1.1-invoice-export.md", "role": "Р", "ok": False, "comment": "нет схемы | таблицы →\nдобавить"}]
+        self.write(".doctool/review/a.json", json.dumps(good, ensure_ascii=False))
+        rc, out, err = self.run_doc("approve-batch", ".doctool/review/a.json")
+        self.assertEqual(rc, 0, out + err)
+        self.assertIn("применено 3: ✅ 2, ❌ 1", out)
+        reg = self.read("approvals.md")
+        self.assertRegex(reg, r"\| `deploy/billing.md` \| Д \| агент, роль DevOps-инженер \| 🤖 \| [\d-]+ \| ✅ \|")
+        self.assertIn("| ❌ | ", reg)
+        self.assertIn("нет схемы / таблицы → добавить", reg)                                # | и перевод строки не ломают таблицу
+        self.assertIn("| R-BIL-1 | Т | агент, роль Тестировщик | 🤖 |", self.read("specs/billing/approvals.md"))
+        # неизвестная пара — ошибка, и реестр не меняется совсем
+        before = (self.read("approvals.md"), self.read("specs/billing/approvals.md"), self.read("approvals-summary.md"))
+        bad = [{"page": "design.md", "role": "А", "ok": True, "comment": "ок"},
+               {"page": "design.md", "role": "Т", "ok": True, "comment": "Т не подтверждает решения"},
+               {"page": "R-BIL-1", "role": "Д", "ok": True, "comment": "x"}]
+        self.write(".doctool/review/b.json", json.dumps(bad, ensure_ascii=False))
+        rc, out, _ = self.run_doc("approve-batch", ".doctool/review/b.json")
+        self.assertEqual(rc, 1)
+        self.assertIn("нет строки «design.md × Т»", out)
+        self.assertIn("требование R-BIL-1 роль Д не подтверждает", out)
+        self.assertIn("не применено ничего", out)
+        self.assertEqual(before, (self.read("approvals.md"), self.read("specs/billing/approvals.md"), self.read("approvals-summary.md")))
+        self.write(".doctool/review/c.json", "{не json")
+        rc, _, err = self.run_doc("approve-batch", ".doctool/review/c.json")
+        self.assertEqual(rc, 1)
+        self.assertIn("не прочитан JSON", err)
+
+    # ---------- расход токенов ----------
+    @unittest.skipUnless(HAS_YAML, "нет PyYAML")
+    def test_cost(self):
+        rc, out, _ = self.run_doc("cost")
+        self.assertEqual(rc, 0)
+        self.assertIn("| review-batch | документ | 1,0 тыс. – 1,5 тыс. | 1,4 тыс. | ✅ |", out)
+        self.assertIn("все замеры в допуске", out)
+        rc, out, _ = self.run_doc("cost", "add", "review-batch", "5k+1k", "4", "документ", "--model", "Sonnet", "--note", "пачка 2")
+        self.assertEqual(rc, 0)
+        self.assertIn("1,5 тыс. на единицу", out)                                         # 6000 / 4; ожидание унаследовано
+        self.assertIn("— ✅", out)
+        rc, out, _ = self.run_doc("cost", "add", "review-batch", "30k", "4", "документ")    # 7,5 тыс. > 1,5 тыс. × 2
+        self.assertIn("⚠️ расхождение >2×", out)
+        self.assertIn("остановиться и разобрать", out)
+        rc, out, _ = self.run_doc("cost")
+        self.assertIn("⚠️ вне допуска: review-batch", out)
+        page = self.read("token-costs.md")                                                 # страница перегенерирована
+        self.assertIn("| 2026", page)
+        self.assertIn("⚠️ расхождение >2×", page)
+        self.assertIn("пачка 2", page)
+        self.assert_clean()
+        self.edit("data/costs.yaml", "tokens: 250", "tokens: 260")                         # журнал правлен руками — страница отстала
+        rc, out, _ = self.run_doc("check")
+        self.assertIn("расход: token-costs.md отстаёт от data/costs.yaml", out)
+        rc, out, _ = self.run_doc("cost", "md")
+        self.assertIn("обновлено", out)
+        self.assert_clean()
+        rc, _, err = self.run_doc("cost", "add", "new-process", "10k", "1", "документ")
+        self.assertEqual(rc, 1)
+        self.assertIn("укажи --method", err)
+        rc, _, err = self.run_doc("cost", "add", "new-process", "10k", "1", "документ", "--method", "approvals.md#нет-якоря")
+        self.assertIn("нет якоря #нет-якоря", err)
+        rc, out, err = self.run_doc("cost", "add", "new-process", "10k", "1", "документ", "--method", "change-process.md#bulk", "--expect", "5-20")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("ожидание 5,0 тыс. – 20,0 тыс. — ✅", out)
+        self.assert_clean()
+
+    # ---------- механика до ролей: новые правила lint ----------
+    def test_lint_mechanics(self):
+        t = "tasks/1.1-invoice-export.md"
+        self.edit(t, "(R-BIL-1 «Основной путь»)", "(R-BIL-1)")
+        self.edit(t, " (R-BIL-2 «Почтовый сервис недоступен»)", "")                         # R-BIL-2 не покрыт приёмкой
+        self.edit(t, "| 1–2 дн |", "| 3–4 дн |")                                            # 6 ч вне 3–4 дн
+        self.edit(t, "(ОВ-1)", "(ОВ-7)")                                                    # нет такого открытого вопроса
+        self.edit("specs/billing/interfaces.md", "| Почтовый сервис недоступен | счёт не доставлен |",
+                  "| Почтовый сервис недоступен | счёт не доставлен | таймаут I1 | повтор |\n| Диск заполнен | экспорт не создан |")
+        self.edit("specs/billing/traceability.md", "| интерфейс I1 | [1.1](../../tasks/1.1-invoice-export.md) | 3 |",
+                  "| интерфейс I1 | [1.1](../../tasks/1.1-invoice-export.md) | 4 |")
+        b = "components/billing/blocks/exporter.md"
+        self.edit(b, "| Требования | R-BIL-1, R-BIL-2 |", "| Требования | R-BIL-1 |")
+        self.edit(b, "затем «не отправлен» |", "затем «не отправлен» (R-BIL-2) |")
+        self.edit("deploy/billing.md", "Миграции обратимые; откат", "Откат")
+        self.edit("specs/billing/interfaces.md", "| `GET /invoices/export` |", "| `GET /invoices/csv` |")     # плагин проекта
+        self.edit("specs/billing/interfaces.md", "| платформа | конфиг | 10000 |", "| платформа | values | 10000 |")
+        rc, out, _ = self.run_doc("lint", "billing")
+        self.assertEqual(rc, 0)
+        for s in ("задача 1.1: приёмка и подзадачи не покрывают R-BIL-2", "подзадачи 6 ч ≈ 0.8 дн вне оценки шапки 3–4 дн",
+                  "открытый пункт ссылается на ОВ-7", "строка FMEA «Диск заполнен» без сценария отказа",
+                  "RTM R-BIL-2 — «Сценариев» 4, в спеке 3", "блок «Экспорт счетов»: requirement R-BIL-2 названы в карточке, но не в поле «Требования»",
+                  "deploy/billing.md: «Обновление и откат» без миграций",
+                  "GET /invoices/export нет в каталоге API", "нет «Пример конфигурации», хотя параметры в values: export.max_rows"):
+            self.assertIn(s, out)
 
 
 if __name__ == "__main__":

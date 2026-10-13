@@ -20,9 +20,15 @@ USAGE = """doctool — правило в момент правки, провер
   tools/doc rnd <slug|путь.md> <тема>  заготовка R&D v3.2 по шаблону + строка в реестре R&D
   tools/doc rnd-check <файл>...       структура R&D v3.2: Э1–Э10, «Вывод этапа», ворота G1–G10, источники (код 1)
   tools/doc blocks                    заполненность карточек блоков
-  tools/doc review-pack <стр.> <буква>  пакет проверки роли в одном файле
+  tools/doc unit <ID|путь>            карточка единицы данных YAML: поля без пустых + «связано: …»
+  tools/doc yaml-check [путь]         схема единиц data/: поля, типы, значения, ссылки, _order.yaml (код 1)
+  tools/doc yaml-fmt [путь]           порядок ключей по схеме, единый стиль, новые единицы в _order.yaml
+  tools/doc review-batch <компонент> [--max 30]  пачка ⏳-страниц: карточки для всех ролей в одном файле
+  tools/doc approve-batch <файл.json> [--human]  решения пачки [{page, role, ok, comment}] одним захватом реестра
+  tools/doc review-pack <стр.> <буква>  пакет проверки одной роли (запасной режим)
   tools/doc review-queue [буква]      что ждёт решения роли
   tools/doc approve <стр.|ID требования> <буква> ok|no "<комментарий>" [--human] [--who ИМЯ]
+  tools/doc cost [add …|md]           расход токенов: сводка, запись замера, страница (допуск ±2×)
   tools/doc finding <компонент> <ID[,ID]> ok|wait|owner|reject "<что сделано>"
   tools/doc finding <компонент> next-id  следующий свободный ID замечания
   tools/doc init [--json] [--force]   создать doc.config.toml (шаблон) в текущей папке
@@ -191,6 +197,62 @@ def main(argv=None) -> int:
         need(2, "review-pack <страница> <буква>")
         p = RV.pack(ctx, args[0], args[1])
         _out(f"{ctx.show(p)} — {len(p.read_text(encoding='utf-8')) // 4} ток. (примерно)")
+    elif cmd in ("yaml-check", "yaml-fmt", "unit"):
+        from . import units as UN
+        try:
+            if cmd == "yaml-check":
+                iss = UN.check(ctx, args[0] if args else None)
+                _out("\n".join(f"⚠️ {i}" for i in iss) or "yaml: замечаний нет")
+                return 1 if iss else 0
+            if cmd == "yaml-fmt":
+                ch = UN.fmt(ctx, args[0] if args else None)
+                _out(f"отформатировано: {len(ch)}" + "".join(f"\n- {c}" for c in ch))
+            else:
+                need(1, "unit <ID|путь>")
+                _out(UN.card(ctx, " ".join(args)))
+        except UN.NoYaml as e:
+            _out(f"doc: {e.code}", err=True)
+            return 1
+    elif cmd == "review-batch":
+        mx = int(args[args.index("--max") + 1]) if "--max" in args else 0
+        rest = [a for i, a in enumerate(args) if not a.startswith("--") and not (i and args[i - 1] == "--max")]
+        if not rest:
+            raise SystemExit(f"использование: {ctx.command} review-batch <компонент> [--max 30] (общие страницы — «-»)")
+        comp = rest[0]
+        res = RV.batch(ctx, comp, mx)
+        cpt = float(ctx.get("review.chars_per_token", 3) or 3)
+        for p, jf, n, k, c in res:
+            _out(f"{ctx.show(p)}: страниц {n}, пар {k}, символов {c}, ≈{c / cpt:.0f} ток. всего, ≈{c / cpt / max(n, 1):.0f} на страницу; "
+                 f"ответ — {ctx.show(jf)} → {ctx.command} approve-batch {ctx.show(jf)}")
+        if not res:
+            _out(f"{comp}: ⏳ нет")
+        gaps = len(LN.run(ctx).get("—" if comp in ("-", "—") else comp, []))
+        if gaps:
+            _out(f"⚠️ lint {comp}: пробелов {gaps} — сначала их (роли механику не повторяют): {ctx.command} lint {comp}")
+    elif cmd == "approve-batch":
+        need(1, "approve-batch <файл.json> [--human] [--who ИМЯ]")
+        who = args[args.index("--who") + 1] if "--who" in args else ""
+        f = Path(args[0]) if Path(args[0]).is_absolute() or Path(args[0]).exists() else ctx.root / args[0]
+        try:
+            items = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            raise SystemExit(f"{args[0]}: не прочитан JSON-массив решений ({e})")
+        if not isinstance(items, list):
+            raise SystemExit(f"{args[0]}: нужен JSON-массив [{{\"page\", \"role\", \"ok\", \"comment\"}}]")
+        done, errs = A.set_decisions(ctx, items, human="--human" in args, who=who)
+        for x in done:
+            _out(x)
+        for e in errs:
+            _out(f"⚠️ {e}")
+        if errs:
+            _out(f"не применено ничего: ошибок {len(errs)} — исправь файл и повтори")
+            return 1
+        _out(f"применено {len(done)}: ✅ {sum('✅' in d for d in done)}, ❌ {sum('❌' in d for d in done)}")
+    elif cmd == "cost":
+        from . import costs as CO
+        text, rc = CO.main(ctx, args)  # без PyYAML для журнала YAML — ошибка «нужен PyYAML» (код 1)
+        _out(text)
+        return rc
     elif cmd == "review-queue":
         q = A.queue(ctx, args[0] if args else "")
         _out(f"ждёт решения: {len(q)}")
@@ -220,6 +282,7 @@ def main(argv=None) -> int:
         _out("lint: " + (", ".join(reg.lint_rules) or "—"))
         _out("check: " + (", ".join(reg.check_rules) or "—"))
         _out("каталоги ID: " + (", ".join(reg.ref_kinds) or "—"))
+        _out("карточки review-batch: " + (", ".join(reg.card_kinds) or "—"))
         _out("команды: " + (", ".join(f"{k} — {getattr(v, 'help', '')}" for k, v in reg.commands.items()) or "—"))
     elif ctx.plugins and cmd in ctx.plugins.commands:
         rc = ctx.plugins.commands[cmd](ctx, args)

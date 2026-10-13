@@ -263,44 +263,77 @@ def write_summary(ctx, status: dict):
 # ---------- решение и очередь ----------
 
 def set_decision(ctx, page: str, letter: str, ok: bool, comment: str, human: bool = False, who: str = "") -> str:
-    letter = ctx.role_letter(letter)
-    if letter not in ctx.role_letters():
-        raise SystemExit(f"роль «{letter}» не описана; роли: {', '.join(ctx.role_letters())}")
-    rid = page.strip()
-    is_req = ctx.get("requirements.approvals.enabled") and re.fullmatch(ctx.get("requirements.id"), rid)
-    if not is_req:
-        rel = ctx.rel(page) if Path(page).exists() else page.replace("\\", "/").strip("`")
-        page = rel or page
+    """Решение роли по странице или требованию (`approve`)."""
+    done, errs = set_decisions(ctx, [{"page": page, "role": letter, "ok": ok, "comment": comment}], human=human, who=who)
+    if errs:
+        raise SystemExit(errs[0])
+    return done[0]
+
+
+def set_decisions(ctx, items: list, human: bool = False, who: str = "") -> tuple:
+    """Пачка решений [{page, role, ok, comment}] одним захватом блокировки реестра (`approve-batch`).
+
+    Всё или ничего: есть неизвестная пара (страница × роль, требование × роль) или роль — реестр не меняется,
+    возвращаются ([], ошибки). Иначе — ([строка на решение], [])."""
+    letters = ctx.role_letters()
     with lock(ctx, registry_path(ctx)):
         sync(ctx)
-        if is_req:
-            r = ctx.requirements().get(rid)
-            if not r:
-                raise SystemExit(f"требования {rid} нет в спеках ({', '.join(ctx.get('requirements.specs'))})")
-            path = req_file(ctx, r.file)
-            rows = _read_req(path)
-            key = (rid, letter)
-            if key not in rows:
-                raise SystemExit(f"требование {rid} роль {letter} не подтверждает (роли требования: {req_roles(ctx, r.title) or '—'})")
-        else:
-            rows = read_registry(ctx)
-            key = (page, letter)
-            if key not in rows:
-                t = ctx.type_of(page)
-                why = f"тип «{t.name}» подтверждают: {t.approve or 'никто'}" if t else "тип документа не определён (route)"
-                raise SystemExit(f"нет строки «{page} × {letter}» в реестре: {why}")
-        c = rows[key]
-        c[2] = (who or (f"агент, роль {ctx.role_name(letter)}" if not human else ctx.role_name(letter))).replace("|", "/")
-        c[3] = "👤" if human else "🤖"
-        c[4] = datetime.date.today().isoformat()
-        c[5] = "✅" if ok else "❌"
-        c[7] = (comment or "—").replace("|", "/").replace("\n", " ")
-        if is_req:
-            _write_req(ctx, r.file, path, rows)
-        else:
-            _write_registry(ctx, rows)
-        sync(ctx)  # сводка — с новым решением
-    return f"{page} × {letter} ({ctx.role_name(letter)}): {c[5]} {c[3]}"
+        reg = read_registry(ctx)
+        req_rows = {}  # путь файла подтверждений спеки → (спека, строки)
+        plan, errs = [], []
+        for n, d in enumerate(items):
+            if not isinstance(d, dict):
+                errs.append(f"[{n}]: нужен объект {{page, role, ok, comment}}")
+                continue
+            page, letter = str(d.get("page", "")).strip(), ctx.role_letter(str(d.get("role", "")).strip())
+            if letter not in letters:
+                errs.append(f"[{n}] {page}: роль «{letter}» не описана; роли: {', '.join(letters)}")
+                continue
+            if not isinstance(d.get("ok"), bool):
+                errs.append(f"[{n}] {page} × {letter}: ok — true или false")
+                continue
+            is_req = ctx.get("requirements.approvals.enabled") and re.fullmatch(ctx.get("requirements.id"), page)
+            if is_req:
+                r = ctx.requirements().get(page)
+                if not r:
+                    errs.append(f"[{n}] требования {page} нет в спеках ({', '.join(ctx.get('requirements.specs'))})")
+                    continue
+                path = req_file(ctx, r.file)
+                if str(path) not in req_rows:
+                    req_rows[str(path)] = (r.file, path, _read_req(path))
+                rows = req_rows[str(path)][2]
+                if (page, letter) not in rows:
+                    errs.append(f"[{n}] требование {page} роль {letter} не подтверждает (роли требования: {req_roles(ctx, r.title) or '—'})")
+                    continue
+                plan.append((rows, (page, letter), d, letter, page))
+            else:
+                rel = ctx.rel(page) if Path(page).exists() else page.replace("\\", "/").strip("`")
+                rel = rel or page
+                if (rel, letter) not in reg:
+                    t = ctx.type_of(rel)
+                    why = f"тип «{t.name}» подтверждают: {t.approve or 'никто'}" if t else "тип документа не определён (route)"
+                    errs.append(f"[{n}] нет строки «{rel} × {letter}» в реестре: {why}")
+                    continue
+                plan.append((reg, (rel, letter), d, letter, rel))
+        if errs:
+            return [], [re.sub(r"^\[0\] ", "", e) for e in errs] if len(items) == 1 else errs
+        done = []
+        for rows, key, d, letter, name in plan:
+            c = rows[key]
+            c[2] = (who or (f"агент, роль {ctx.role_name(letter)}" if not human else ctx.role_name(letter))).replace("|", "/")
+            c[3] = "👤" if human else "🤖"
+            c[4] = datetime.date.today().isoformat()
+            c[5] = "✅" if d["ok"] else "❌"
+            c[7] = " ".join(str(d.get("comment") or "—").replace("|", "/").split())
+            done.append(f"{name} × {letter} ({ctx.role_name(letter)}): {c[5]} {c[3]}")
+        if any(x[0] is reg for x in plan):
+            _write_registry(ctx, reg)
+        for spec, path, rows in req_rows.values():
+            if any(x[0] is rows for x in plan):
+                _write_req(ctx, spec, path, rows)
+        ctx.invalidate()
+        sync(ctx)  # сводка — с новыми решениями
+    return done, []
 
 
 def queue(ctx, letter: str = "") -> list:

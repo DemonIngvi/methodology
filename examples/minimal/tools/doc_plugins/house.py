@@ -36,3 +36,33 @@ def tasks_table(ctx, args):
     U.write(ctx.root / "TASKS.md", "\n".join(L) + "\n")
     print("TASKS.md обновлён")
     return 0
+
+
+# ---------- проектная механика до ролей (обобщённые правила — в ядре, rules/approvals.md#economy) ----------
+
+ENDPOINT = re.compile(r"`(GET|POST|PUT|PATCH|DELETE) (/[^`\s?]*)")
+
+
+@lint_rule("screen-endpoints")
+def screen_endpoints(ctx):
+    """Эндпоинт с экрана или из операций блока есть в каталоге API проекта ([plugin.house] api_pages)."""
+    pages = ctx.glob(ctx.get("plugin.house.api_pages", []) or [])
+    known = {f"{m} {p}" for f in pages for m, p in ENDPOINT.findall(ctx.text(f))}
+    for b in ctx.blocks():
+        for sec in b.sections.values():
+            for m, p in ENDPOINT.findall(sec):
+                if f"{m} {p}" not in known:
+                    yield b.component or "—", f"блок «{b.title}»: {m} {p} нет в каталоге API ({', '.join(pages) or '—'}) → строка эндпоинта"
+
+
+@lint_rule("deploy-config-example")
+def deploy_config_example(ctx):
+    """Параметр спеки хранится в values ([plugin.house] config_stores) → в Deploy компонента есть «Пример конфигурации»."""
+    stores = [s.lower() for s in ctx.get("plugin.house.config_stores", []) or []]
+    for f in ctx.glob("specs/*/interfaces.md"):
+        comp = ctx.component_of(f)
+        params = [U.plain(U.col(r, "Параметр")) for r in U.table_rows(ctx.text(f), "| Параметр |")
+                  if U.plain(U.col(r, "Хранилище")).lower() in stores]
+        dep = f"deploy/{comp}.md"
+        if params and (ctx.root / dep).is_file() and "## Пример конфигурации" not in ctx.text(dep):
+            yield comp, f"{dep}: нет «Пример конфигурации», хотя параметры в values: {', '.join(params[:3])}"

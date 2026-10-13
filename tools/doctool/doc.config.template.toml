@@ -198,8 +198,33 @@ edges = [
 "Задачи" = ["tasks/*.md"]
 "Сводки" = ["ROADMAP.md", "TASKS.md"]
 
+# Данные YAML по единице (rules/data.md#yaml; нужен PyYAML): вид единицы — схема полей, ссылки на каталоги ID.
+# [[data.kinds]]
+# name = "story"
+# glob = "data/stories/*/*.yaml"
+# id_pattern = 'US-[A-Z]+-\d+'
+# component = "{parent}"
+# regen = "истории компонента {parent}"
+# fields = [
+#   { name = "role", type = "str", required = true },
+#   { name = "reqs", type = "list", items = "str", ref = "requirement", required = true },
+# ]
+
+# Учёт расхода токенов (rules/token-costs.md): журнал и генерируемая страница.
+# [costs]
+# file = "data/costs.yaml"
+# page = "token-costs.md"
+
+# Пакетная проверка ролями: лимиты карточек (символов) и размер пачки.
+[review]
+card_max = 2500
+block_max = 1500
+batch_max = 30
+
 [lint]
-enable = ["subtasks", "requirement-scenarios", "block-card", "block-screens", "recommended-sections", "task-acceptance"]
+# механика до ролей: task-acceptance-coverage … deploy-migrations (tools/README.md, команда lint)
+enable = ["subtasks", "requirement-scenarios", "block-card", "block-screens", "recommended-sections", "task-acceptance",
+          "task-acceptance-coverage", "task-estimate-range", "open-question-refs", "fmea-scenarios", "rtm", "block-refs", "deploy-migrations"]
 
 [check]
 disable = []                          # links, anchors, orphans, trace, tasks, blocks, findings, sections, ids, tooling, approvals

@@ -1,0 +1,18 @@
+# Журнал расхода токенов (rules/token-costs.md): записи-образцы; добавлять — tools/doc cost add …
+costs:
+- date: '2026-10-13'
+  process: review-batch
+  methodology: approvals.md#economy
+  units: 4
+  unit: документ
+  tokens: 5600
+  expected: [1000, 1500]
+  note: образец — пачка компонента billing, все роли за проход
+- date: '2026-10-13'
+  process: unit-read
+  methodology: data.md#yaml
+  units: 1
+  unit: единица
+  tokens: 250
+  expected: [150, 400]
+  note: образец — tools/doc unit вместо чтения целого файла данных

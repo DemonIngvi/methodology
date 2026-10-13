@@ -22,6 +22,12 @@ source = "tasks/*.md"
 commit = true
 
 [[generated]]
+glob = "token-costs.md"
+by = "tools/doc cost md (и cost add)"
+source = "data/costs.yaml — tools/doc cost add …"
+commit = true
+
+[[generated]]
 glob = "site/**"
 by = "сборка сайта"
 source = "исходники *.md"
@@ -51,6 +57,18 @@ name = "Страница блока"
 glob = "components/*/blocks/*.md"
 approve = "АРТ"
 approve_as = "Блок"
+
+[[types]]
+name = "Блок (YAML)"
+glob = "data/blocks/*/*.yaml"
+exclude = "data/blocks/*/_order.yaml"
+approve = "АРТ"
+methodology = "blocks.md"
+card = "unit"
+
+[[types]]
+name = "Трассировка (RTM)"
+glob = "specs/*/traceability.md"
 
 [[types]]
 name = "Deploy"
@@ -110,11 +128,14 @@ dir = "reviews/findings"
 id = "Z-{code}-{n}"
 
 [blocks]
+data_kind = "block"
+data_map = { "Что делает" = "does", "Технология" = "tech", "Истории" = "stories", "Входы и выходы" = "io", "Данные" = "data", "Параметры" = "params", "Требования" = "reqs", "Задачи" = "tasks", "При сбое" = "on_failure", "Почему так" = "why" }
+data_sections = { "сервис" = "operations", "интерфейс" = "screens", "хранилище" = "schema" }
 glob = ["components/*/blocks/*.md"]
 fields = [
   { name = "Что делает", required = true },
   { name = "Технология", required = true },
-  { name = "Истории", required = false },
+  { name = "Истории", required = false, refs = ["story"] },
   { name = "Входы и выходы", required = true, refs = ["interface"] },
   { name = "Данные", required = true, refs = ["table"] },
   { name = "Параметры", required = true, refs = ["param"] },
@@ -123,6 +144,74 @@ fields = [
   { name = "При сбое", required = true },
   { name = "Почему так", required = true, refs = ["decision"] },
 ]
+
+
+# Данные в YAML по единице (rules/data.md#yaml): один файл — одна единица; схема вида — здесь.
+[[data.kinds]]
+name = "block"
+glob = "data/blocks/*/*.yaml"
+id = "{parent}/{stem}"
+title = "title"
+component = "{parent}"
+regen = "схема компонента {parent} и страница блока «{stem}» (сборка сайта)"
+fields = [
+  { name = "title", type = "str", required = true },
+  { name = "kind", type = "str", required = true, choices = ["интерфейс", "сервис", "хранилище"] },
+  { name = "does", type = "list", items = "str", required = true },
+  { name = "tech", type = "str", required = true },
+  { name = "stories", type = "list", items = "str", ref = "story" },
+  { name = "io", type = "list", items = "str", required = true },
+  { name = "data", type = "list", items = "str", ref = "table" },
+  { name = "params", type = "list", items = "str", ref = "param" },
+  { name = "reqs", type = "list", items = "str", ref = "requirement", required = true },
+  { name = "tasks", type = "list", items = "str", ref = "task", required = true },
+  { name = "on_failure", type = "str", required = true },
+  { name = "why", type = "str", required = true },
+  { name = "operations", type = "list", items = "str" },
+  { name = "screens", type = "list", items = "str" },
+  { name = "schema", type = "list", items = "str" },
+]
+
+[[data.kinds]]
+name = "model"
+glob = "data/models/*.yaml"
+id_pattern = '[A-Z][A-Za-z]+'
+title = "name"
+regen = "контракт {stem} на вкладке «Интеграции»"
+fields = [
+  { name = "name", type = "str", required = true },
+  { name = "owner", type = "str", required = true },
+  { name = "source", type = "str", required = true, choices = ["✅ есть", "📘 внешний протокол", "🧩 наше решение"] },
+  { name = "why", type = "str", required = true },
+  { name = "interfaces", type = "list", items = "str", ref = "interface" },
+  { name = "fields", type = "list", required = true, items = { type = "dict", fields = [
+    { name = "name", type = "str", required = true },
+    { name = "type", type = "str", required = true },
+    { name = "required", type = "bool", required = true },
+    { name = "desc", type = "str", required = true },
+  ] } },
+]
+
+[[data.kinds]]
+name = "story"
+glob = "data/stories/*/*.yaml"
+id_pattern = 'US-[A-Z]+-\d+'
+id_hint = "US-<КОД>-<N>"
+component = "{parent}"
+regen = "истории компонента {parent} (страница историй)"
+fields = [
+  { name = "role", type = "str", required = true },
+  { name = "want", type = "str", required = true },
+  { name = "so_that", type = "str", required = true },
+  { name = "reqs", type = "list", items = "str", ref = "requirement", required = true },
+  { name = "accept", type = "list", items = "str", required = true },
+]
+
+# Учёт расхода токенов (rules/token-costs.md): журнал и генерируемая страница.
+[costs]
+file = "data/costs.yaml"
+page = "token-costs.md"
+titles = { review-batch = "Пакетная проверка ролями", unit-read = "Чтение единицы данных" }
 
 [ids.param]
 pattern = '`([a-z][\w.]*)`'
@@ -147,6 +236,8 @@ edges = [
   ["Параметры и интерфейсы", "Модель данных", "I-коды и таблицы"],
   ["Параметры и интерфейсы", "Deploy", "значения в примере конфигурации"],
   ["Задачи", "Сводки", "строка и итоги"],
+  ["Данные (YAML)", "Спека", "требования и сценарии по ссылкам единицы"],
+  ["Данные (YAML)", "Блоки", "страница блока и схема компонента"],
 ]
 
 [graph.nodes]
@@ -156,13 +247,15 @@ edges = [
 "Спека" = ["specs/*/spec.md"]
 "Параметры и интерфейсы" = ["specs/*/interfaces.md"]
 "Модель данных" = ["data/model.json"]
+"Данные (YAML)" = ["data/blocks/*/*.yaml", "data/models/*.yaml", "data/stories/*/*.yaml"]
 "Блоки" = ["components/*/blocks/*.md"]
 "Deploy" = ["deploy/*.md"]
 "Задачи" = ["tasks/*.md"]
 "Сводки" = ["ROADMAP.md", "TASKS.md"]
 
 [lint]
-enable = ["subtasks", "requirement-scenarios", "block-card", "block-screens", "recommended-sections", "task-acceptance", "placeholders"]
+enable = ["subtasks", "requirement-scenarios", "block-card", "block-screens", "recommended-sections", "task-acceptance", "placeholders",
+          "task-acceptance-coverage", "task-estimate-range", "open-question-refs", "fmea-scenarios", "rtm", "block-refs", "deploy-migrations"]
 
 [check]
 entries = ["README.md"]
@@ -176,3 +269,7 @@ index_row = "| [{title}]({file}) | {title} | черновик | v3.2 |"
 [plugin.datamodel]
 file = "data/model.json"
 interfaces_in = ["specs/*/interfaces.md"]
+
+[plugin.house]
+api_pages = ["specs/*/interfaces.md"]     # где перечислены эндпоинты (lint screen-endpoints)
+config_stores = ["values"]                # хранилище параметра, которое требует «Пример конфигурации» в Deploy

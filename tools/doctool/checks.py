@@ -308,6 +308,27 @@ def check_tooling(ctx):
     return issues
 
 
+# ---------- данные YAML по единице и журнал расхода ----------
+
+def check_yaml(ctx):
+    """yaml-check внутри check: схемы видов [[data.kinds]], ссылки, порядок. Без PyYAML — пропуск с предупреждением."""
+    from . import units as UN
+    if not UN.kinds(ctx) or not UN.unit_files(ctx):
+        return []
+    if UN.yaml_mod() is None:
+        if ctx.get("data.require_yaml"):
+            return ["yaml: нужен PyYAML (pip install pyyaml) — данные data/ не проверены"]
+        import sys
+        sys.stderr.write("doc: yaml-check пропущен — нет PyYAML (pip install pyyaml); [data] require_yaml = true — считать замечанием\n")
+        return []
+    return [f"yaml: {x}" for x in UN.check(ctx)]
+
+
+def check_costs(ctx):
+    from . import costs as CO
+    return CO.check(ctx)
+
+
 BUILTIN = {
     "links": check_links,
     "anchors": check_anchors,
@@ -320,6 +341,8 @@ BUILTIN = {
     "ids": check_ids,
     "tooling": check_tooling,
     "rnd": lambda ctx: RND.check(ctx),
+    "yaml": check_yaml,
+    "costs": check_costs,
 }
 
 

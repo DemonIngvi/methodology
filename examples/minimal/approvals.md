@@ -8,14 +8,17 @@
 |---|---|---|---|---|---|---|---|
 | `architecture.md` | В | — | — | — | ⏳ | 9366bdbd | Главная / архитектура |
 | `architecture.md` | А | — | — | — | ⏳ | 9366bdbd | Главная / архитектура |
-| `components/billing/blocks/exporter.md` | А | — | — | — | ⏳ | 93a4f21f | Страница блока |
-| `components/billing/blocks/exporter.md` | Р | — | — | — | ⏳ | 93a4f21f | Страница блока |
-| `components/billing/blocks/exporter.md` | Т | — | — | — | ⏳ | 93a4f21f | Страница блока |
+| `components/billing/blocks/exporter.md` | А | — | — | — | ⏳ | f344408e | Страница блока |
+| `components/billing/blocks/exporter.md` | Р | — | — | — | ⏳ | f344408e | Страница блока |
+| `components/billing/blocks/exporter.md` | Т | — | — | — | ⏳ | f344408e | Страница блока |
+| `data/blocks/billing/mailer.yaml` | А | — | — | — | ⏳ | 75a54fd3 | Блок (YAML) |
+| `data/blocks/billing/mailer.yaml` | Р | — | — | — | ⏳ | 75a54fd3 | Блок (YAML) |
+| `data/blocks/billing/mailer.yaml` | Т | — | — | — | ⏳ | 75a54fd3 | Блок (YAML) |
 | `deploy/billing.md` | Д | — | — | — | ⏳ | ae876d89 | Deploy |
 | `deploy/billing.md` | Б | — | — | — | ⏳ | ae876d89 | Deploy |
 | `deploy/billing.md` | С | — | — | — | ⏳ | ae876d89 | Deploy |
 | `design.md` | В | — | — | — | ⏳ | 3648f437 | Решения |
 | `design.md` | А | — | — | — | ⏳ | 3648f437 | Решения |
-| `tasks/1.1-invoice-export.md` | В | — | — | — | ⏳ | acb877b6 | Задача |
-| `tasks/1.1-invoice-export.md` | Р | — | — | — | ⏳ | acb877b6 | Задача |
-| `tasks/1.1-invoice-export.md` | Т | — | — | — | ⏳ | acb877b6 | Задача |
+| `tasks/1.1-invoice-export.md` | В | — | — | — | ⏳ | 06646570 | Задача |
+| `tasks/1.1-invoice-export.md` | Р | — | — | — | ⏳ | 06646570 | Задача |
+| `tasks/1.1-invoice-export.md` | Т | — | — | — | ⏳ | 06646570 | Задача |

@@ -35,6 +35,7 @@ class DocType:
     sections: list = field(default_factory=list)
     recommended: list = field(default_factory=list)
     checklist: str = ""
+    card: str = ""
 
 
 @dataclass
@@ -203,7 +204,7 @@ class Ctx:
                 source=t.get("source", ""),
                 approve=self._approve_letters(t),
                 sections=U.as_list(t.get("sections")), recommended=U.as_list(t.get("recommended")),
-                checklist=t.get("checklist", "")))
+                checklist=t.get("checklist", ""), card=t.get("card", "")))
         return out
 
     def _approve_letters(self, t: dict) -> str:
@@ -431,6 +432,9 @@ class Ctx:
             return re.compile(self.get("requirements.id")), set(self.requirements())
         if kind == "task":
             return re.compile(r"(?<![\w.])(" + self.get("tasks.id") + r")(?![\w.]*\d)"), set(self.tasks())
+        from . import units as UN
+        if UN.kind(self, kind):  # вид единиц data/ — каталог ID
+            return UN.id_catalog(self, kind)
         if self.plugins:
             fn = self.plugins.ref_kinds.get(kind)
             if fn:
@@ -467,6 +471,26 @@ class Ctx:
                 fields = {k: (", ".join(map(str, v)) if isinstance(v, list) else str(v)) for k, v in (b.get("fields") or {}).items()}
                 out.append(Block(b.get("component", ""), b.get("title", "?"), src, fields, str(b.get("kind", "")).lower(),
                                  {k: "\n".join(map(str, b.get("sections", {}).get(k, []))) for k in (self.get("blocks.kinds", {}) or {})}))
+        dk = self.get("blocks.data_kind", "")
+        if dk:  # карточки из единиц YAML (без PyYAML — пропускаются; yaml-check скажет, что нужен PyYAML)
+            from . import units as UN
+            k = UN.kind(self, dk) or {}
+            dmap = self.get("blocks.data_map", {}) or {}
+            secs = self.get("blocks.data_sections", {}) or {}
+
+            def txt(v):
+                if isinstance(v, list):
+                    return "; ".join(txt(x) for x in v)
+                if isinstance(v, dict):
+                    return ", ".join(f"{a}: {txt(b)}" for a, b in v.items())
+                return "" if v is None else str(v)
+            for uid, (rel, v) in UN.units(self, dk).items():
+                v = v if isinstance(v, dict) else {}
+                fields = {name: txt(v.get(key)) for name, key in dmap.items()}
+                title = str(v.get(k.get("title") or "title", "") or uid)
+                out.append(Block(UN.component_of(self, rel, k), title, rel, fields,
+                                 str(v.get(self.get("blocks.data_kind_field", "kind"), "")).lower(),
+                                 {kd: txt(v.get(key)) for kd, key in secs.items()}))
         return out
 
     def block_card(self, b: Block):
