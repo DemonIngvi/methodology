@@ -1,0 +1,66 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "title": "Единица «costs»",
+ "description": "Единица данных вида «costs» (конфиг [[data.kinds]]). Генерируется: python ../../tools/doc yaml-schema — не править руками.",
+ "type": "object",
+ "properties": {
+  "costs": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d\\d-\\d\\d$"
+     },
+     "process": {
+      "type": "string",
+      "pattern": "^(?:[a-z0-9-]+)$",
+      "description": "код процесса латиницей"
+     },
+     "methodology": {
+      "type": "string",
+      "description": "файл правил#якорь"
+     },
+     "units": {
+      "type": "integer"
+     },
+     "unit": {
+      "type": "string"
+     },
+     "tokens": {
+      "type": "integer"
+     },
+     "model": {
+      "type": "string"
+     },
+     "minutes": {
+      "type": "integer"
+     },
+     "expected": {
+      "type": "array",
+      "items": {
+       "type": "integer"
+      }
+     },
+     "note": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "date",
+     "process",
+     "methodology",
+     "units",
+     "unit",
+     "tokens"
+    ]
+   }
+  }
+ },
+ "additionalProperties": false,
+ "required": [
+  "costs"
+ ]
+}

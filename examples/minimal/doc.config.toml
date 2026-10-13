@@ -147,6 +147,24 @@ fields = [
 
 
 # Данные в YAML по единице (rules/data.md#yaml): один файл — одна единица; схема вида — здесь.
+[data]
+schema_dir = "data/_schema"        # yaml-schema: JSON Schema для редактора (и yaml.schemas в .vscode/settings.json)
+
+[data.params]                      # тип значения параметра — из таблицы параметров спеки
+glob = "specs/*/interfaces.md"
+name_col = "Параметр"
+default_col = "По умолчанию"
+min_col = "Мин"
+max_col = "Макс"
+
+# Каталоги значений для ref: откуда собирать ID (виды единиц, поля единиц, регулярки по файлам, перечисление).
+[[data.catalogs]]
+name = "participant"
+about = "блок (название) или участник обмена из interfaces.md спек"
+fields = [{ kind = "block", field = "title" }]
+values = ["планировщик"]
+files = [{ glob = "specs/*/interfaces.md", pattern = '→ ([^|]+?)\s*\|' }]
+
 [[data.kinds]]
 name = "block"
 glob = "data/blocks/*/*.yaml"
@@ -160,9 +178,25 @@ fields = [
   { name = "does", type = "list", items = "str", required = true },
   { name = "tech", type = "str", required = true },
   { name = "stories", type = "list", items = "str", ref = "story" },
-  { name = "io", type = "list", items = "str", required = true },
-  { name = "data", type = "list", items = "str", ref = "table" },
-  { name = "params", type = "list", items = "str", ref = "param" },
+  # Строки таблиц — словари с именованными полями; прежний вид [a, b, c] переводит yaml-migrate (positional).
+  { name = "io", type = "list", required = true, positional = ["dir", "with", "what"], items = { type = "dict", one_of = ["with", "label"], fields = [
+    { name = "dir", type = "str", required = true, choices = ["→", "←", "↔"] },
+    { name = "with", type = "str", ref = "participant", desc = "с кем обмен: блок или участник из каталога" },
+    { name = "label", type = "str", desc = "участник не из каталога — словами" },
+    { name = "what", type = "str" },
+    { name = "via", type = "list", items = "str", ref = "interface" },
+  ] } },
+  # «нет: <почему>» — допустимо вместо списка (блок без таблиц / без настроек)
+  { name = "data", type = "list", none_ok = true, positional = ["table", "access"], items = { type = "dict", fields = [
+    { name = "table", type = "str", required = true, ref = "table" },
+    { name = "access", type = "str", choices = ["read", "write", "read-write"] },
+    { name = "why", type = "str" },
+  ] } },
+  { name = "params", type = "list", none_ok = true, positional = ["name", "value"], items = { type = "dict", fields = [
+    { name = "name", type = "str", required = true, ref = "param" },
+    { name = "value", type = "any", param_value = "name", desc = "значение по типу параметра из таблицы спеки" },
+    { name = "note", type = "str", desc = "пояснение вместо значения" },
+  ] } },
   { name = "reqs", type = "list", items = "str", ref = "requirement", required = true },
   { name = "tasks", type = "list", items = "str", ref = "task", required = true },
   { name = "on_failure", type = "str", required = true },

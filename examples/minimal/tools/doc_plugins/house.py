@@ -4,7 +4,7 @@
 """
 import re
 
-from doctool.api import check_rule, command, lint_rule, util as U
+from doctool.api import check_rule, command, lint_rule, migration, migration_report, util as U
 
 
 @check_rule("purpose")
@@ -66,3 +66,37 @@ def deploy_config_example(ctx):
         dep = f"deploy/{comp}.md"
         if params and (ctx.root / dep).is_file() and "## Пример конфигурации" not in ctx.text(dep):
             yield comp, f"{dep}: нет «Пример конфигурации», хотя параметры в values: {', '.join(params[:3])}"
+
+
+WRITE = ("POST", "PUT", "PATCH", "DELETE")
+
+
+@lint_rule("endpoint-errors")
+def endpoint_errors(ctx):
+    """У всех изменяющих эндпоинтов каталога API (POST / PUT / PATCH / DELETE, любой статус) — коды ошибок (rules/api.md)."""
+    for f in ctx.glob(ctx.get("plugin.house.api_pages", []) or []):
+        for r in U.table_rows(ctx.text(f), "| Метод и путь"):
+            m = ENDPOINT.search(U.col(r, "Метод и путь"))
+            if not m or m.group(1) not in WRITE:
+                continue
+            errors = U.plain(U.col(r, "Ошибки"))
+            if not re.search(r"\b[45]\d\d\b", errors):
+                yield ctx.component_of(f) or "—", f"{m.group(1)} {m.group(2)}: нет кодов ошибок (колонка «Ошибки»; «ошибки: —» не годится) → {f}"
+
+
+# ---------- правила yaml-migrate (позиционные строки → именованные поля делает ядро по `positional` схемы) ----------
+
+@migration("block")
+def io_via(ctx, v, rel):
+    """I-код вместо описания в строке io → поле via."""
+    for r in v.get("io") or []:
+        if isinstance(r, dict) and re.fullmatch(r"I\d+(,\s*I\d+)*", str(r.get("what", "")).strip()):
+            r["via"] = re.findall(r"I\d+", r.pop("what"))
+    return v
+
+
+@migration_report("block")
+def io_left(ctx, v, rel):
+    """I-код остался внутри текста — вынести в via вручную (иначе страница изменится)."""
+    return [f"io[{i}]: I-код в тексте «{r['what']}» — вынести в via" for i, r in enumerate(v.get("io") or [])
+            if isinstance(r, dict) and re.search(r"\bI\d+\b", str(r.get("what", "")))]

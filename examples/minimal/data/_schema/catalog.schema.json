@@ -1,0 +1,56 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "title": "Каталоги данных",
+ "description": "Допустимые значения полей-ссылок; строятся из данных и документов — не править руками.",
+ "definitions": {
+  "interface": {
+   "type": "string",
+   "description": "interface",
+   "enum": [
+    "I1"
+   ]
+  },
+  "participant": {
+   "type": "string",
+   "description": "блок (название) или участник обмена из interfaces.md спек",
+   "enum": [
+    "Рассылка счетов",
+    "к",
+    "планировщик",
+    "почтовый сервис"
+   ]
+  },
+  "requirement": {
+   "type": "string",
+   "description": "requirement",
+   "enum": [
+    "R-BIL-1",
+    "R-BIL-2"
+   ]
+  },
+  "story": {
+   "type": "string",
+   "description": "story",
+   "enum": [
+    "US-BIL-1"
+   ]
+  },
+  "table": {
+   "type": "string",
+   "description": "table",
+   "enum": [
+    "invoices",
+    "invoices.amount",
+    "invoices.id",
+    "invoices.status"
+   ]
+  },
+  "task": {
+   "type": "string",
+   "description": "task",
+   "enum": [
+    "1.1"
+   ]
+  }
+ }
+}

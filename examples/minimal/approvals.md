@@ -11,9 +11,9 @@
 | `components/billing/blocks/exporter.md` | А | — | — | — | ⏳ | f344408e | Страница блока |
 | `components/billing/blocks/exporter.md` | Р | — | — | — | ⏳ | f344408e | Страница блока |
 | `components/billing/blocks/exporter.md` | Т | — | — | — | ⏳ | f344408e | Страница блока |
-| `data/blocks/billing/mailer.yaml` | А | — | — | — | ⏳ | 75a54fd3 | Блок (YAML) |
-| `data/blocks/billing/mailer.yaml` | Р | — | — | — | ⏳ | 75a54fd3 | Блок (YAML) |
-| `data/blocks/billing/mailer.yaml` | Т | — | — | — | ⏳ | 75a54fd3 | Блок (YAML) |
+| `data/blocks/billing/mailer.yaml` | А | — | — | — | ⏳ | 1573741a | Блок (YAML) |
+| `data/blocks/billing/mailer.yaml` | Р | — | — | — | ⏳ | 1573741a | Блок (YAML) |
+| `data/blocks/billing/mailer.yaml` | Т | — | — | — | ⏳ | 1573741a | Блок (YAML) |
 | `deploy/billing.md` | Д | — | — | — | ⏳ | ae876d89 | Deploy |
 | `deploy/billing.md` | Б | — | — | — | ⏳ | ae876d89 | Deploy |
 | `deploy/billing.md` | С | — | — | — | ⏳ | ae876d89 | Deploy |

@@ -23,8 +23,10 @@ USAGE = """doctool — правило в момент правки, провер
   tools/doc unit <ID|путь>            карточка единицы данных YAML: поля без пустых + «связано: …»
   tools/doc yaml-check [путь]         схема единиц data/: поля, типы, значения, ссылки, _order.yaml (код 1)
   tools/doc yaml-fmt [путь]           порядок ключей по схеме, единый стиль, новые единицы в _order.yaml
-  tools/doc review-batch <комп>[,<комп>…] [--max 40]  пачка ⏳-страниц: карточки для всех ролей в одном файле
-  tools/doc approve-batch <файл.json> [--human]  решения пачки [{page, role, ok, comment}] одним захватом реестра
+  tools/doc yaml-schema               JSON Schema редактора (data/_schema) и yaml.schemas в .vscode/settings.json
+  tools/doc yaml-migrate [путь] [--dry]  перевод единиц в текущую схему (positional → именованные поля, правила плагинов)
+  tools/doc review-batch <комп>[,<комп>…] [--max 40] [--force]  пачка ⏳-страниц чистых компонентов (lint = 0; --force — обойти)
+  tools/doc approve-batch <файл.json> [--human]  решения пачки [{page, role, ok, comment}] одним захватом реестра; шаблон и комментарий без факта — отказ
   tools/doc review-pack <стр.> <буква>  пакет проверки одной роли (запасной режим)
   tools/doc review-queue [буква]      что ждёт решения роли
   tools/doc approve <стр.|ID требования> <буква> ok|no "<комментарий>" [--human] [--who ИМЯ]
@@ -197,6 +199,29 @@ def main(argv=None) -> int:
         need(2, "review-pack <страница> <буква>")
         p = RV.pack(ctx, args[0], args[1])
         _out(f"{ctx.show(p)} — {len(p.read_text(encoding='utf-8')) // 4} ток. (примерно)")
+    elif cmd in ("yaml-schema", "yaml-migrate"):
+        from . import units as UN
+        try:
+            UN.need_yaml()
+            if cmd == "yaml-schema":
+                from . import schema as SC
+                ch, notes = SC.write(ctx)
+                _out(f"схемы: изменено {len(ch)}" + "".join(f"\n- {c}" for c in ch))
+                for n in notes:
+                    _out(f"⚠️ {n}")
+            else:
+                from . import migrate as MG
+                path = next((a for a in args if not a.startswith("--")), None)
+                ch, errs, left = MG.migrate(ctx, path, dry="--dry" in args)
+                _out(f"data: {'будет переведено' if '--dry' in args else 'переведено'} файлов {len(ch)}"
+                     + "".join(f"\n- {c}" for c in ch[:30]) + ("\n…" if len(ch) > 30 else ""))
+                for e in errs:
+                    _out(f"⚠️ {e}")
+                _out(f"осталось текстом (разобрать вручную): {len(left)}" + "".join(f"\n- {x}" for x in left))
+                return 1 if errs else 0
+        except UN.NoYaml as e:
+            _out(f"doc: {e.code}", err=True)
+            return 1
     elif cmd in ("yaml-check", "yaml-fmt", "unit"):
         from . import units as UN
         try:
@@ -217,8 +242,17 @@ def main(argv=None) -> int:
         mx = int(args[args.index("--max") + 1]) if "--max" in args else 0
         rest = [a for i, a in enumerate(args) if not a.startswith("--") and not (i and args[i - 1] == "--max")]
         if not rest:
-            raise SystemExit(f"использование: {ctx.command} review-batch <комп>[,<комп>…] [--max 40] (общие страницы — «-»)")
+            raise SystemExit(f"использование: {ctx.command} review-batch <комп>[,<комп>…] [--max 40] [--force] (общие страницы — «-»)")
         comp = rest[0]
+        lg = LN.run(ctx)
+        names = [("—" if c.strip() in ("-", "—", "") else c.strip()) for c in comp.split(",")]
+        dirty = [c for c in names if lg.get(c)]
+        if dirty and "--force" not in args:  # механика — до ролей: роли не платят за то, что ловит lint (rules/approvals.md#economy)
+            for c in dirty:
+                _out(f"⛔ {c}: пробелов lint {len(lg[c])} — сначала закрыть ({ctx.command} lint {c}); --force — взять всё равно")
+            comp = ",".join(c for c in comp.split(",") if ("—" if c.strip() in ("-", "—", "") else c.strip()) not in dirty)
+            if not comp:
+                return 1
         res = RV.batch(ctx, comp, mx)
         cpt = float(ctx.get("review.chars_per_token", 1.6) or 1.6)
         ovh = int(ctx.get("review.agent_overhead", 19500) or 0)
@@ -229,11 +263,10 @@ def main(argv=None) -> int:
                  f"ответ — {ctx.show(jf)} → {ctx.command} approve-batch {ctx.show(jf)}")
         if not res:
             _out(f"{comp}: ⏳ нет")
-        lg = LN.run(ctx)
         for cc in comp.split(","):
             cc = "—" if cc.strip() in ("-", "—", "") else cc.strip()
             if lg.get(cc):
-                _out(f"⚠️ lint {cc}: пробелов {len(lg[cc])} — сначала их (роли механику не повторяют): {ctx.command} lint {cc}")
+                _out(f"⚠️ lint {cc}: пробелов {len(lg[cc])} (--force) — роли механику не повторяют: {ctx.command} lint {cc}")
     elif cmd == "approve-batch":
         need(1, "approve-batch <файл.json> [--human] [--who ИМЯ]")
         who = args[args.index("--who") + 1] if "--who" in args else ""
@@ -244,6 +277,12 @@ def main(argv=None) -> int:
             raise SystemExit(f"{args[0]}: не прочитан JSON-массив решений ({e})")
         if not isinstance(items, list):
             raise SystemExit(f"{args[0]}: нужен JSON-массив [{{\"page\", \"role\", \"ok\", \"comment\"}}]")
+        guard = A.batch_guard(ctx, items)
+        if guard:
+            for g in guard:
+                _out(f"⛔ {g}")
+            _out("ничего не применено — реши каждую пару отдельно и напиши свой комментарий: что проверено (ID, поле, номер)")
+            return 1
         done, errs = A.set_decisions(ctx, items, human="--human" in args, who=who)
         for x in done:
             _out(x)
@@ -288,6 +327,7 @@ def main(argv=None) -> int:
         _out("check: " + (", ".join(reg.check_rules) or "—"))
         _out("каталоги ID: " + (", ".join(reg.ref_kinds) or "—"))
         _out("карточки review-batch: " + (", ".join(reg.card_kinds) or "—"))
+        _out("правила yaml-migrate: " + (", ".join(f"{k} ({len(v)})" for k, v in reg.migrations.items()) or "—"))
         _out("команды: " + (", ".join(f"{k} — {getattr(v, 'help', '')}" for k, v in reg.commands.items()) or "—"))
     elif ctx.plugins and cmd in ctx.plugins.commands:
         rc = ctx.plugins.commands[cmd](ctx, args)

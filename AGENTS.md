@@ -1,6 +1,6 @@
 # AGENTS.md — как агенту работать с документацией
 
-Инструкции для любого ИИ-агента (Claude Code, Codex, Cursor, Gemini, Copilot) и человека. Подключите этот файл к проекту вместе с инструментом `tools/doc` ([установка и команды](tools/README.md#install); на Windows — `python tools/doc …`). Без инструмента каждый шаг выполняется вручную по таблицам в [rules/](rules/README.md) — колонка «Вручную» ниже.
+Инструкции для любого ИИ-агента (Claude Code, Codex, Cursor, Gemini, Copilot) и человека. Подключите этот файл к проекту вместе с инструментом `tools/doc` ([установка и команды](tools/README.md#install); Git Bash, Linux, macOS — `tools/doc …`; cmd.exe — `tools\doc.cmd …`; любая ОС — `python tools/doc …`). Без инструмента каждый шаг выполняется вручную по таблицам в [rules/](rules/README.md) — колонка «Вручную» ниже.
 
 <a id="task-entry"></a>
 
@@ -30,8 +30,8 @@
 | пробелы методологий | `tools/doc lint [компонент]` — нестрогие проверки, коммит не блокируют | «Проверки» в методологии типа |
 | что править дальше | `tools/doc next <файл>` — следующие документы по графу и методология каждого | [doc-graph.md](rules/doc-graph.md) |
 | переименовать документ | `tools/doc move <старый> <новый>` — файл и все ссылки сразу | [правило](rules/change-process.md#links) |
-| подтвердить документы ролями | промпт [agents/doc-reviewer.md](agents/doc-reviewer.md); основной режим — `tools/doc review-batch <компонент>` → один JSON → `tools/doc approve-batch <файл.json>`; запасной — `tools/doc review-pack`, `tools/doc approve`; очередь — `tools/doc review-queue` | [подтверждения](rules/approvals.md#economy): карточки из страниц, решения — строки реестра |
-| данные (YAML по единице) | `tools/doc unit <ID>` — карточка единицы и «связано: …»; `tools/doc yaml-check [путь]`, `tools/doc yaml-fmt [путь]` | файл единицы; схема вида — `[[data.kinds]]` конфига ([правило](rules/data.md#yaml)) |
+| подтвердить документы ролями | промпт [agents/doc-reviewer.md](agents/doc-reviewer.md); основной режим — `tools/doc review-batch <компонент>` (компонент с непустым lint не берётся, `--force` — обойти) → каждую пару решить отдельно, один JSON → `tools/doc approve-batch <файл.json>` (шаблонный комментарий или комментарий без факта — отказ всей пачке; модель — Sonnet); запасной — `tools/doc review-pack`, `tools/doc approve`; очередь — `tools/doc review-queue` | [подтверждения](rules/approvals.md#economy): карточки из страниц, решения — строки реестра |
+| данные (YAML по единице) | `tools/doc unit <ID>` — карточка единицы и «связано: …»; `tools/doc yaml-check [путь]`, `tools/doc yaml-fmt [путь]`, `tools/doc yaml-schema` (схема для редактора), `tools/doc yaml-migrate` (прежний вид → именованные поля) | файл единицы; схема вида — `[[data.kinds]]` конфига; значения ссылок — из каталогов, блок без таблиц — `нет: <почему>` ([правило](rules/data.md#yaml-units)) |
 | расход токенов | `tools/doc cost add <процесс> <токены> <единиц> <единица>`, `tools/doc cost` — замер против ожидания, допуск ±2× | строка журнала ([как замерять](rules/token-costs.md#measure)) |
 | статус замечания | `tools/doc finding <компонент> <ID> ok\|wait\|owner "<что сделано>"` | [замечания](rules/review.md#findings) |
 | посмотреть схемы | `tools/doc diagram <файл>` — mermaid-схемы файла отрисованной страницей | [формат схем](rules/diagrams.md) |

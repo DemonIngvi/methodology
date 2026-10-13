@@ -321,7 +321,9 @@ def check_yaml(ctx):
         import sys
         sys.stderr.write("doc: yaml-check пропущен — нет PyYAML (pip install pyyaml); [data] require_yaml = true — считать замечанием\n")
         return []
-    return [f"yaml: {x}" for x in UN.check(ctx)]
+    from . import schema as SC
+    iss = UN.check(ctx)
+    return [f"yaml: {x}" for x in iss] + ([] if iss else [f"yaml: {x}" for x in SC.stale(ctx)])  # со сломанным YAML схемы не строятся
 
 
 def check_costs(ctx):

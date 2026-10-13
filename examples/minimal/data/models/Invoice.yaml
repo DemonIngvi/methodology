@@ -5,14 +5,8 @@ source: 🧩 наше решение
 why: контракт письма со счётом для почтового сервиса (I1)
 interfaces: [I1]
 fields:
-- name: id
-  type: uuid
-  required: true
-  desc: ID счёта; ключ идемпотентности отправки
-- name: amount
-  type: number
-  required: true
-  desc: сумма счёта в рублях
+- {name: id, type: uuid, required: true, desc: ID счёта; ключ идемпотентности отправки}
+- {name: amount, type: number, required: true, desc: сумма счёта в рублях}
 - name: status
   type: string
   required: true

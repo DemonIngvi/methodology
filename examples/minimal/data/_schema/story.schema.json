@@ -1,0 +1,44 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "title": "Единица «story»",
+ "description": "Единица данных вида «story» (конфиг [[data.kinds]]). Генерируется: python ../../tools/doc yaml-schema — не править руками.",
+ "type": "object",
+ "properties": {
+  "role": {
+   "type": "string"
+  },
+  "want": {
+   "type": "string"
+  },
+  "so_that": {
+   "type": "string"
+  },
+  "reqs": {
+   "type": "array",
+   "items": {
+    "anyOf": [
+     {
+      "$ref": "catalog.schema.json#/definitions/requirement"
+     },
+     {
+      "const": ""
+     }
+    ]
+   }
+  },
+  "accept": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  }
+ },
+ "additionalProperties": false,
+ "required": [
+  "role",
+  "want",
+  "so_that",
+  "reqs",
+  "accept"
+ ]
+}

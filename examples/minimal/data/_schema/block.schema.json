@@ -1,0 +1,239 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "title": "Единица «block»",
+ "description": "Единица данных вида «block» (конфиг [[data.kinds]]). Генерируется: python ../../tools/doc yaml-schema — не править руками.",
+ "type": "object",
+ "properties": {
+  "title": {
+   "type": "string"
+  },
+  "kind": {
+   "type": "string",
+   "enum": [
+    "интерфейс",
+    "сервис",
+    "хранилище"
+   ]
+  },
+  "does": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "tech": {
+   "type": "string"
+  },
+  "stories": {
+   "type": "array",
+   "items": {
+    "anyOf": [
+     {
+      "$ref": "catalog.schema.json#/definitions/story"
+     },
+     {
+      "const": ""
+     }
+    ]
+   }
+  },
+  "io": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "dir": {
+      "type": "string",
+      "enum": [
+       "→",
+       "←",
+       "↔"
+      ]
+     },
+     "with": {
+      "anyOf": [
+       {
+        "$ref": "catalog.schema.json#/definitions/participant"
+       },
+       {
+        "const": ""
+       }
+      ],
+      "description": "с кем обмен: блок или участник из каталога"
+     },
+     "label": {
+      "type": "string",
+      "description": "участник не из каталога — словами"
+     },
+     "what": {
+      "type": "string"
+     },
+     "via": {
+      "type": "array",
+      "items": {
+       "anyOf": [
+        {
+         "$ref": "catalog.schema.json#/definitions/interface"
+        },
+        {
+         "const": ""
+        }
+       ]
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "dir"
+    ],
+    "anyOf": [
+     {
+      "required": [
+       "with"
+      ]
+     },
+     {
+      "required": [
+       "label"
+      ]
+     }
+    ]
+   }
+  },
+  "data": {
+   "anyOf": [
+    {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "table": {
+        "anyOf": [
+         {
+          "$ref": "catalog.schema.json#/definitions/table"
+         },
+         {
+          "const": ""
+         }
+        ]
+       },
+       "access": {
+        "type": "string",
+        "enum": [
+         "read",
+         "write",
+         "read-write"
+        ]
+       },
+       "why": {
+        "type": "string"
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "table"
+      ]
+     }
+    },
+    {
+     "type": "string",
+     "pattern": "^нет:\\s*\\S",
+     "description": "«нет: <почему>» — списка нет, причина обязательна"
+    }
+   ]
+  },
+  "params": {
+   "anyOf": [
+    {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "value": {
+        "description": "значение по типу параметра из таблицы спеки"
+       },
+       "note": {
+        "type": "string",
+        "description": "пояснение вместо значения"
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "name"
+      ]
+     }
+    },
+    {
+     "type": "string",
+     "pattern": "^нет:\\s*\\S",
+     "description": "«нет: <почему>» — списка нет, причина обязательна"
+    }
+   ]
+  },
+  "reqs": {
+   "type": "array",
+   "items": {
+    "anyOf": [
+     {
+      "$ref": "catalog.schema.json#/definitions/requirement"
+     },
+     {
+      "const": ""
+     }
+    ]
+   }
+  },
+  "tasks": {
+   "type": "array",
+   "items": {
+    "anyOf": [
+     {
+      "$ref": "catalog.schema.json#/definitions/task"
+     },
+     {
+      "const": ""
+     }
+    ]
+   }
+  },
+  "on_failure": {
+   "type": "string"
+  },
+  "why": {
+   "type": "string"
+  },
+  "operations": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "screens": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "schema": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  }
+ },
+ "additionalProperties": false,
+ "required": [
+  "title",
+  "kind",
+  "does",
+  "tech",
+  "io",
+  "reqs",
+  "tasks",
+  "on_failure",
+  "why"
+ ]
+}

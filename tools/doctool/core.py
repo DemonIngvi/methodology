@@ -36,6 +36,7 @@ class DocType:
     recommended: list = field(default_factory=list)
     checklist: str = ""
     card: str = ""
+    own_reqs: str = ""
 
 
 @dataclass
@@ -204,7 +205,7 @@ class Ctx:
                 source=t.get("source", ""),
                 approve=self._approve_letters(t),
                 sections=U.as_list(t.get("sections")), recommended=U.as_list(t.get("recommended")),
-                checklist=t.get("checklist", ""), card=t.get("card", "")))
+                checklist=t.get("checklist", ""), card=t.get("card", ""), own_reqs=t.get("own_reqs", "")))
         return out
 
     def _approve_letters(self, t: dict) -> str:
@@ -435,6 +436,10 @@ class Ctx:
         from . import units as UN
         if UN.kind(self, kind):  # вид единиц data/ — каталог ID
             return UN.id_catalog(self, kind)
+        from . import catalogs as CT
+        ent = CT.entry(self, kind)  # [[data.catalogs]] и встроенный `param`
+        if ent:
+            return ent
         if self.plugins:
             fn = self.plugins.ref_kinds.get(kind)
             if fn:

@@ -9,6 +9,7 @@ YAML читается PyYAML (`pip install pyyaml`). Без него `yaml-check
 Методология — rules/data.md#yaml, порядок правки — rules/change-process.md#yaml-path.
 """
 import datetime
+import difflib
 import json
 import re
 import sys
@@ -46,18 +47,43 @@ def load(path: Path):
     return y.safe_load(Path(path).read_text(encoding="utf-8"))
 
 
-def dump(value) -> str:
-    """YAML: порядок ключей как в значении, Unicode без экранирования, короткие списки скаляров — в одну строку."""
+def _flat_scalar(x) -> bool:
+    return isinstance(x, (str, int, float, bool)) or x is None
+
+
+class _Row(dict):
+    """Строка таблицы (словарь в списке) — в YAML в одну строку."""
+
+
+def _mark_rows(v, in_list=False):
+    if isinstance(v, dict):
+        out = {k: _mark_rows(x) for k, x in v.items()}
+        if in_list and out and all(_flat_scalar(x) or (isinstance(x, list) and all(_flat_scalar(i) for i in x)) for x in v.values()) \
+                and len(json.dumps(v, ensure_ascii=False)) <= 100:
+            return _Row(out)
+        return out
+    if isinstance(v, list):
+        return [_mark_rows(x, True) for x in v]
+    return v
+
+
+def dump(value, flow_rows=True) -> str:
+    """YAML: порядок ключей как в значении, Unicode без экранирования, короткие списки скаляров и строки таблиц
+    (словари с именованными полями внутри списка) — в одну строку."""
     y = need_yaml()
 
     class D(y.SafeDumper):
         pass
+
+    D.add_representer(_Row, lambda d, v: d.represent_mapping("tag:yaml.org,2002:map", dict(v), flow_style=True))
 
     def rep_list(d, v):
         flow = v is not value and bool(v) and all(isinstance(x, (str, int, float, bool)) or x is None for x in v) \
             and len(json.dumps(v, ensure_ascii=False)) <= 100
         return d.represent_sequence("tag:yaml.org,2002:seq", v, flow_style=flow)
     D.add_representer(list, rep_list)
+    if flow_rows:
+        value = _mark_rows(value)
     return y.dump(value, Dumper=D, sort_keys=False, allow_unicode=True, width=100000, default_flow_style=False)
 
 
@@ -188,32 +214,67 @@ def _type_ok(t: str, v) -> bool:
     return True
 
 
-def _ref_check(ctx, ref: str, v: str):
-    """Сообщение об ошибке ссылки или None. Каталог — вид единиц data/ или каталог ID (`[ids]`, requirement, task, плагины)."""
+_STATE = {"comp": ""}  # компонент проверяемой единицы (для каталога параметров)
+
+
+def none_prefix(ctx) -> str:
+    return ctx.get("data.none_prefix", "нет:")
+
+
+def is_none(ctx, v) -> bool:
+    """Строка «нет: <почему>» — допустимое значение спискового поля с `none_ok = true`."""
+    return isinstance(v, str) and v.startswith(none_prefix(ctx))
+
+
+def _catalog(ctx, ref: str):
     if kind(ctx, ref):
-        ent = id_catalog(ctx, ref)
-    else:
-        ent = ctx.ids(ref)
+        return id_catalog(ctx, ref)
+    from . import catalogs as CT
+    return CT.entry(ctx, ref) or ctx.ids(ref)
+
+
+def _ref_check(ctx, ref, v: str, also=None):
+    """Сообщение об ошибке ссылки или None. Каталог — вид единиц data/, `[[data.catalogs]]`, `param`, каталог ID (`[ids]`,
+    requirement, task, плагины); `ref` — список: значение из любого из них. `also` — регулярка допустимых значений вне каталога."""
+    from . import catalogs as CT
+    if also and re.fullmatch(also, v):
+        return None
+    if isinstance(ref, list):
+        msgs = [_ref_check(ctx, r, v) for r in ref]
+        return None if any(m is None for m in msgs) else f"«{v}» не из каталогов {', '.join(ref)}"
+    if ref == "param" and ctx.get("data.params"):
+        return CT.check_param(ctx, v, _STATE["comp"])
+    ent = _catalog(ctx, ref)
     if not ent:
-        return f"каталог ссылок «{ref}» не описан (вид [[data.kinds]], [ids.{ref}] или плагин)"
+        return f"каталог ссылок «{ref}» не описан (вид [[data.kinds]], [[data.catalogs]], [ids.{ref}] или плагин)"
     rx, ids = ent
     if v in ids:
         return None
     found = [m.group(1) if m.groups() else m.group(0) for m in rx.finditer(v)]
     if found:
         bad = [x for x in found if x not in ids]
-        return f"{ref} {', '.join(bad)} не существует" if bad else None
-    return f"{ref} «{v}» не существует"
+        return f"{ref} {', '.join(bad)} не существует{CT.suggest(bad[0], ids)}" if bad else None
+    return f"{ref} «{v}» не существует{CT.suggest(v, ids)}"
 
 
 def validate(ctx, value, fdef: dict, path: str, errs: list, refs=True):
+    from . import catalogs as CT
     t = fdef.get("type", "any")
     if value is None:
         if fdef.get("required"):
             errs.append(f"{path}: пусто — нужно {TYPES.get(t, t)}")
         return
+    if t == "list" and fdef.get("none_ok") and isinstance(value, str):
+        pre = none_prefix(ctx)
+        if not is_none(ctx, value):
+            errs.append(f"{path}: нужен список или строка «{pre} <почему>», а не «{value[:30]}»")
+        elif not value[len(pre):].strip():
+            errs.append(f"{path}: после «{pre}» нужна причина — почему списка нет")
+        return
     if not _type_ok(t, value):
         hint = " — возьми значение в кавычки" if t == "str" else ""
+        if t == "list" and fdef.get("none_ok"):
+            hint = f" — или строка «{none_prefix(ctx)} <почему>»"
         errs.append(f"{path}: нужно {TYPES.get(t, t)}, а не {_tname(value)}{hint}")
         return
     if t == "list":
@@ -221,27 +282,28 @@ def validate(ctx, value, fdef: dict, path: str, errs: list, refs=True):
         if isinstance(item, str):
             item = {"type": item}
         item = dict(item)
-        for key in ("ref", "choices", "pattern", "hint"):
+        for key in ("ref", "choices", "pattern", "hint", "also"):
             if key in fdef and key not in item:
                 item[key] = fdef[key]
         for i, x in enumerate(value):
             validate(ctx, x, item, f"{path}[{i}]", errs, refs)
         return
     if t == "dict" and fdef.get("fields"):
-        validate_fields(ctx, value, fdef["fields"], path, errs, refs, extra=fdef.get("extra", False))
+        validate_fields(ctx, value, fdef["fields"], path, errs, refs, extra=fdef.get("extra", False), one_of=fdef.get("one_of"))
         return
     if isinstance(value, str) and refs:
         if fdef.get("choices") and value not in fdef["choices"]:
-            errs.append(f"{path}: «{value}» — допустимо: {', '.join(x or '«»' for x in fdef['choices'])}")
+            errs.append(f"{path}: «{value}» — допустимо: {', '.join(x or '«»' for x in fdef['choices'])}{CT.suggest(value, fdef['choices'])}")
         if fdef.get("pattern") and value and not re.fullmatch(fdef["pattern"], value):
             errs.append(f"{path}: «{value}» не по формату {fdef.get('hint') or fdef['pattern']}")
         if fdef.get("ref") and value:
-            bad = _ref_check(ctx, fdef["ref"], value)
+            bad = _ref_check(ctx, fdef["ref"], value, fdef.get("also"))
             if bad:
                 errs.append(f"{path}: {bad}")
 
 
-def validate_fields(ctx, value: dict, fields: list, path: str, errs: list, refs=True, extra=False):
+def validate_fields(ctx, value: dict, fields: list, path: str, errs: list, refs=True, extra=False, one_of=None):
+    from . import catalogs as CT
     names = [f["name"] for f in fields]
     for f in fields:
         p = f"{path}.{f['name']}" if path else f["name"]
@@ -250,10 +312,18 @@ def validate_fields(ctx, value: dict, fields: list, path: str, errs: list, refs=
                 errs.append(f"{p}: обязательное поле отсутствует")
             continue
         validate(ctx, value[f["name"]], f, p, errs, refs)
+        pv = f.get("param_value")  # значение параметра — по типу из таблицы параметров спеки
+        if pv and refs and value.get(pv) and value[f["name"]] not in (None, "") and ctx.get("data.params"):
+            bad = CT.check_param_value(ctx, str(value[pv]), value[f["name"]], _STATE["comp"])
+            if bad:
+                errs.append(f"{p}: {bad}")
+    if one_of and not any(value.get(k) for k in one_of):
+        errs.append(f"{path or '<корень>'}: нужно хотя бы одно из полей: {', '.join(one_of)}")
     if not extra:
         for k in value:
             if k not in names:
-                errs.append(f"{(path + '.') if path else ''}{k}: поле не описано в схеме вида — допустимо: {', '.join(names)}")
+                errs.append(f"{(path + '.') if path else ''}{k}: поле не описано в схеме вида — допустимо: {', '.join(names)}"
+                            f"{CT.suggest(k, names)}")
 
 
 def check_unit(ctx, rel: str, k: dict, refs=True):
@@ -268,6 +338,7 @@ def check_unit(ctx, rel: str, k: dict, refs=True):
     errs = []
     if not isinstance(v, dict):
         return v, [f"единица — словарь полей, а не {_tname(v)}"]
+    _STATE["comp"] = component_of(ctx, rel, k) if refs else ""
     validate_fields(ctx, v, k.get("fields", []), "", errs, refs, extra=k.get("extra", False))
     if k.get("id_pattern"):
         uid = unit_id(k, rel, v)
@@ -344,15 +415,21 @@ def _header(text: str) -> str:
     return "".join(l + "\n" for l in lines)
 
 
-def write_unit(ctx, rel: str, value, fields=None) -> bool:
+def unit_text(ctx, rel: str, value, fields=None) -> str:
+    """Текст файла единицы: комментарии в начале прежнего файла + YAML значения в порядке схемы."""
     p = ctx.root / rel
-    text = dump(_ordered(value, fields or []))
-    if p.is_file():
-        old = U.read(p)
-        text = _header(old) + text
-        if old == text:
-            return False
-    U.write(p, text)
+    text = dump(_ordered(value, fields or []), flow_rows=bool(ctx.get("data.flow_rows", True)))
+    return (_header(U.read(p)) if p.is_file() else "") + text
+
+
+def write_unit(ctx, rel: str, value, fields=None, dry=False) -> bool:
+    """Записать единицу; True — файл изменился (dry — только сообщить)."""
+    p = ctx.root / rel
+    text = unit_text(ctx, rel, value, fields)
+    if p.is_file() and U.read(p) == text:
+        return False
+    if not dry:
+        U.write(p, text)
     return True
 
 
@@ -433,15 +510,20 @@ def _refs_of(ctx, value, fields: list) -> list:
         elif t == "dict" and isinstance(v, dict) and f.get("fields"):
             for ff in f["fields"]:
                 walk(v.get(ff["name"]), ff)
-        elif isinstance(v, str) and f.get("ref"):
-            ref = f["ref"]
-            ent = id_catalog(ctx, ref) if kind(ctx, ref) else ctx.ids(ref)
-            if ent and v in ent[1]:
-                out.append((ref, v))
-            elif ent:
-                out.extend((ref, m.group(1) if m.groups() else m.group(0)) for m in ent[0].finditer(v))
+        elif isinstance(v, str) and f.get("ref") and not is_none(ctx, v):
+            for ref in U.as_list(f["ref"]):
+                ent = _catalog(ctx, ref)
+                if ent and v in ent[1]:
+                    out.append((ref, v))
+                    break
+                elif ent:
+                    found = [(ref, m.group(1) if m.groups() else m.group(0)) for m in ent[0].finditer(v)]
+                    out.extend(found)
+                    if found:
+                        break
             else:
-                out.append((ref, v))
+                if not any(_catalog(ctx, r) for r in U.as_list(f["ref"])):
+                    out.append((U.as_list(f["ref"])[0], v))
     for f in fields:
         if isinstance(value, dict):
             walk(value.get(f["name"]), f)

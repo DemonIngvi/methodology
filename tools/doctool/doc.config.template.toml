@@ -208,7 +208,36 @@ edges = [
 # fields = [
 #   { name = "role", type = "str", required = true },
 #   { name = "reqs", type = "list", items = "str", ref = "requirement", required = true },
+#   # строки таблицы — словари с именованными полями; «нет: <почему>» вместо списка — none_ok; positional — прежний вид для yaml-migrate
+#   { name = "io", type = "list", none_ok = true, positional = ["dir", "with", "what"], items = { type = "dict", one_of = ["with", "label"], fields = [
+#     { name = "dir", type = "str", required = true, choices = ["→", "←", "↔"] },
+#     { name = "with", type = "str", ref = "participant" },
+#     { name = "label", type = "str" },
+#     { name = "what", type = "str" },
+#   ] } },
+#   { name = "params", type = "list", none_ok = true, items = { type = "dict", fields = [
+#     { name = "name", type = "str", required = true, ref = "param" },
+#     { name = "value", type = "any", param_value = "name" },     # значение — по типу параметра из таблицы спеки
+#   ] } },
 # ]
+
+# Строгая структура: каталоги значений для ref (откуда собирать ID), тип параметров из таблиц спек, JSON Schema для редактора.
+# [data]
+# schema_dir = "data/_schema"        # yaml-schema; check ловит устаревшую схему
+# none_prefix = "нет:"
+# [data.params]
+# glob = "specs/*/interfaces.md"
+# name_col = "Параметр"
+# default_col = "По умолчанию"
+# min_col = "Мин"
+# max_col = "Макс"
+# [[data.catalogs]]
+# name = "participant"
+# about = "компонент или блок"
+# kinds = ["component"]                                        # ID единиц этих видов
+# fields = [{ kind = "block", field = "title" }]               # значения поля единиц вида
+# files = [{ glob = "specs/*/interfaces.md", pattern = '^\| (I\d+) \|' }]   # регулярка по файлам (группа 1 или всё)
+# values = ["внешний сервис"]                                  # перечисление
 
 # Учёт расхода токенов (rules/token-costs.md): журнал и генерируемая страница.
 # [costs]
@@ -222,6 +251,11 @@ block_max = 1500
 batch_max = 40
 chars_per_token = 1.6     # кириллица ≈ 1,6–2 символа на токен (латиница ≈ 3–4)
 agent_overhead = 19500    # накладные агента без тяжёлых инструментов, токенов
+# Защита approve-batch от шаблонных решений (rules/approvals.md#economy):
+template_share = 0.10     # один комментарий у большей доли пар — отказ всей пачке (от template_min_pairs пар)
+template_min_pairs = 5
+min_comment = 40          # комментарий короче или без ID / поля / номера (fact_pattern) — отказ всей пачке
+# fact_pattern = '...'    # регулярка «есть проверенный факт» (по умолчанию: ID вида R-XX-1, `поле`, D5, 1.2)
 
 [lint]
 # механика до ролей: task-acceptance-coverage … deploy-migrations (tools/README.md, команда lint)

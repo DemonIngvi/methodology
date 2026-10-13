@@ -297,6 +297,10 @@ def card(ctx, rel: str) -> str:
     tail = ["незакрытые замечания: " + " | ".join(fnd)] if fnd else []
     reqs = ctx.requirements()
     ids = [i for i in dict.fromkeys(ids) if i in reqs]
+    if t and t.own_reqs == "blocks":  # страница уровня компонента: только требования его блоков, не чужие со собранной страницы
+        comp = comp_of(ctx, rel)
+        own = {r for b in ctx.blocks() if b.component == comp for r in ctx.requirement_ids_in(b.fields.get("Требования", ""))}
+        ids = [i for i in ids if i in own] if own else ids
     reserve = min(budget // 2, 60 + sum(len(i) + len(reqs[i].title) + 80 for i in ids)) if ids else 0
     body = _fit([_clean(x) for x in body], budget - reserve - sum(len(x) + 1 for x in tail))
     rl = _req_lines(ctx, ids, budget - sum(len(x) + 1 for x in body + tail) - 25) if ids else []
@@ -332,6 +336,9 @@ def batch(ctx, comp: str, maxn: int = 0) -> list:
         H = [f"# Пачка проверки: {want} · {n}", "", "Вопросы ролей:",
              *[f"- {x} {ctx.role_name(x)}: {next((q for l, _, q in ctx.roles() if l == x), '') or '—'}" for x in letters], "",
              "Правило: отказ (ok=false) — только за блокирующее, с фактом из карточки; ≤2 причины; механику не повторять — её ловит lint. "
+             "Каждую пару решай отдельно по вопросу её роли; комментарий ok — что именно проверено в карточке (ID, поле, номер), "
+             f"≥ {int(ctx.get('review.min_comment', 40))} символов, у каждой пары свой. "
+             "Решения не генерировать скриптом и не копировать: approve-batch отклонит шаблон целиком. "
              f"Ответ — JSON-массив {{\"page\", \"role\", \"ok\", \"comment\"}} по всем парам ниже в файл {ctx.show(jf)}, "
              f"затем {cmd} approve-batch {ctx.show(jf)}", ""]
         for p, ls in chunk:

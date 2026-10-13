@@ -460,7 +460,7 @@ class DocTest(unittest.TestCase):
         self.assertTrue(out.startswith("# data/stories/billing/US-BIL-1.yaml · вид story · ID US-BIL-1"))
         self.assertIn("связано: requirement R-BIL-1, block billing/mailer (ссылается)", out)
         rc, out, _ = self.run_doc("unit", "billing/mailer")
-        self.assertIn("связано: story US-BIL-1, table invoices, param mail.retries, requirement R-BIL-2, task 1.1", out)
+        self.assertIn("связано: story US-BIL-1, participant планировщик, participant почтовый сервис, interface I1, table invoices, param mail.retries, requirement R-BIL-2, task 1.1", out)
         self.assertIn("перегенерируется", out)
         self.assertNotIn("screens", out)                                                  # пустые поля не выводятся
         rc, out, _ = self.run_doc("unit", "Рассылка счетов")                              # по названию
@@ -478,6 +478,158 @@ class DocTest(unittest.TestCase):
         self.assertIn("Перегенерируется — один раз в конце пути изменений", out)
         self.assertIn("Спека — проверить", out)
 
+    @unittest.skipUnless(HAS_YAML, "нет PyYAML")
+    def test_yaml_strict(self):
+        """Строгая схема: именованные поля, каталоги с подсказкой ближайшего, тип параметра, «нет: <почему>»."""
+        blk = "data/blocks/billing/mailer.yaml"
+        rc, out, _ = self.run_doc("yaml-check")
+        self.assertEqual((rc, out.strip()), (0, "yaml: замечаний нет"))
+        self.edit(blk, "{dir: ←, with: планировщик, what: ID счёта}", "{dir: ←, with: планировщк, what: ID счёта}")        # участник не из каталога
+        self.edit(blk, "{dir: →, with: почтовый сервис, what: письмо со счётом, via: [I1]}", "{dir: ->, what: письмо, via: [I11]}")
+        self.edit(blk, "{table: invoices, access: read-write,", "{table: invoces, access: read-write,")                  # таблица
+        self.edit(blk, "{name: mail.retries, value: 3}", "{name: mail.retrys, value: 3}")                                  # параметр
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertEqual(rc, 1)
+        for s in ("io[0].with: participant «планировщк» не существует — может быть: планировщик",
+                  "io[1].dir: «->» — допустимо: →, ←, ↔", "io[1]: нужно хотя бы одно из полей: with, label",
+                  "io[1].via[0]: interface I11 не существует", "data[0].table: table «invoces» не существует — может быть: invoices",
+                  "params[0].name: «mail.retrys» нет среди параметров спек компонента billing", "может быть: mail.retries"):
+            self.assertIn(s, out)
+        # тип значения параметра — из таблицы параметров спеки (мин 0, макс 10)
+        self.edit(blk, "{name: mail.retrys, value: 3}", "{name: mail.retries, value: 50}")
+        self.edit(blk, "{dir: ->, what: письмо, via: [I11]}", "{dir: →, label: внешний сервис, what: письмо, via: [I1]}")
+        self.edit(blk, "{table: invoces,", "{table: invoices,")
+        self.edit(blk, "with: планировщк", "with: планировщик")
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertEqual(rc, 1)
+        self.assertIn("params[0].value: «50» не по типу параметра mail.retries (specs/billing/interfaces.md): число от 0 до 10 (по умолчанию 3)", out)
+        self.assertNotIn("io[", out)
+        self.edit(blk, "value: 50}", "value: 10}")
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertEqual((rc, out.strip()), (0, "yaml: замечаний нет"))
+        # поле строки не из схемы — подсказка ближайшего имени
+        self.edit(blk, "{name: mail.retries, value: 10}", "{name: mail.retries, valu: 10}")
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertIn("params[0].valu: поле не описано в схеме вида — допустимо: name, value, note — может быть: value", out)
+        self.edit(blk, "valu: 10", "value: 3")
+        # «нет: <почему>» — допустимое значение списковых полей data и params; пустая причина и прочий текст — ошибка
+        self.edit(blk, "data:\n- {table: invoices, access: read-write, why: статус отправки пишется в счёт}", "data: 'нет: таблиц нет, письмо уходит из очереди'")
+        self.edit(blk, "params:\n- {name: mail.retries, value: 3}", "params: 'нет:'")
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertIn("params: после «нет:» нужна причина", out)
+        self.assertNotIn("data:", out)
+        self.edit(blk, "params: 'нет:'", "params: просто текст")
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertIn("params: нужен список или строка «нет: <почему>», а не «просто текст»", out)
+        self.edit(blk, "params: просто текст", "params: 'нет: настроек у блока нет, повторы — в планировщике'")
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertEqual((rc, out.strip()), (0, "yaml: замечаний нет"))
+        rc, out, _ = self.run_doc("unit", "billing/mailer")                               # ссылок в строке «нет: …» нет — «связано» без таблицы
+        self.assertIn("нет: таблиц нет", out)
+        self.assertNotIn("table invoices", out)
+        rc, out, _ = self.run_doc("lint", "billing")                                      # карточка блока заполнена: «нет: …» — значение поля
+        self.assertEqual((rc, out.strip()), (0, "пробелов нет"))
+        self.assert_clean()
+
+    @unittest.skipUnless(HAS_YAML, "нет PyYAML")
+    def test_yaml_catalogs_from_config(self):
+        """Каталог объявляется в конфиге: значения из полей единиц, регулярки по файлам, перечисление."""
+        blk = "data/blocks/billing/mailer.yaml"
+        self.edit(blk, "with: планировщик", "with: почтовый сервис")                        # регулярка по interfaces.md: «биллинг → почтовый сервис»
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertEqual((rc, out.strip()), (0, "yaml: замечаний нет"))
+        self.edit(blk, "with: почтовый сервис", "with: Рассылка счетов")                  # поле title единиц вида block
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertEqual((rc, out.strip()), (0, "yaml: замечаний нет"))
+        self.edit(blk, "with: Рассылка счетов", "with: планировщик")                      # values = ["планировщик"]
+        self.edit("doc.config.toml", 'values = ["планировщик"]', 'values = ["планировщика"]')
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertIn("participant «планировщик» не существует — может быть: планировщика", out)
+
+    @unittest.skipUnless(HAS_YAML, "нет PyYAML")
+    def test_yaml_schema(self):
+        rc, out, _ = self.run_doc("yaml-schema")
+        self.assertEqual(rc, 0, out)
+        sd = self.ex / "data/_schema"
+        names = sorted(p.name for p in sd.glob("*.json"))
+        self.assertEqual(names, ["block.schema.json", "catalog.schema.json", "costs.schema.json", "model.schema.json", "order.schema.json",
+                                 "story.schema.json"])
+        blk = json.loads((sd / "block.schema.json").read_text(encoding="utf-8"))
+        io = blk["properties"]["io"]["items"]["properties"]
+        self.assertEqual(io["dir"]["enum"], ["→", "←", "↔"])
+        self.assertIn("required", blk)
+        self.assertIn("title", blk["required"])
+        self.assertEqual(blk["properties"]["kind"]["enum"], ["интерфейс", "сервис", "хранилище"])
+        self.assertEqual(blk["properties"]["data"]["anyOf"][1]["type"], "string")          # «нет: <почему>» — строка
+        cat = json.loads((sd / "catalog.schema.json").read_text(encoding="utf-8"))["definitions"]
+        self.assertIn("планировщик", cat["participant"]["enum"])
+        self.assertIn("US-BIL-1", cat["story"]["enum"])
+        self.assertIn("I1", cat["interface"]["enum"])
+        vs = json.loads(self.read(".vscode/settings.json"))["yaml.schemas"]
+        self.assertEqual(vs["./data/_schema/block.schema.json"], "data/blocks/*/[!_]*.yaml")
+        self.assertEqual(vs["./data/_schema/order.schema.json"], "**/_order.yaml")
+        rc, out, _ = self.run_doc("yaml-schema")                                            # идемпотентно
+        self.assertIn("схемы: изменено 0", out)
+        self.assert_clean()
+        # изменили каталог — схема устарела (check ловит), yaml-schema чинит
+        self.edit("doc.config.toml", 'values = ["планировщик"]', 'values = ["планировщик", "касса"]')
+        rc, out, _ = self.run_doc("check")
+        self.assertEqual(rc, 1)
+        self.assertIn("yaml: data/_schema/catalog.schema.json: устарела", out)
+        rc, out, _ = self.run_doc("yaml-schema")
+        self.assertIn("data/_schema/catalog.schema.json", out)
+        self.assert_clean()
+        # лишняя схема удаляется
+        self.write("data/_schema/old.schema.json", "{}\n")
+        rc, out, _ = self.run_doc("check")
+        self.assertIn("old.schema.json: лишняя", out)
+        rc, out, _ = self.run_doc("yaml-schema")
+        self.assertIn("old.schema.json (удалён)", out)
+
+    @unittest.skipUnless(HAS_YAML, "нет PyYAML")
+    def test_yaml_schema_vscode_keeps_settings(self):
+        self.write(".vscode/settings.json", json.dumps({"editor.tabSize": 2, "yaml.schemas": {"https://example.org/x.json": "*.foo"}}))
+        rc, out, _ = self.run_doc("yaml-schema")
+        self.assertEqual(rc, 0, out)
+        vs = json.loads(self.read(".vscode/settings.json"))
+        self.assertEqual(vs["editor.tabSize"], 2)                                           # чужие настройки на месте
+        self.assertEqual(vs["yaml.schemas"]["https://example.org/x.json"], "*.foo")         # чужая схема на месте
+        self.assertIn("./data/_schema/block.schema.json", vs["yaml.schemas"])
+        # файл с комментариями (JSONC) не затирается
+        jsonc = '{\n  // мои настройки\n  "editor.tabSize": 4\n}\n'
+        self.write(".vscode/settings.json", jsonc)
+        rc, out, _ = self.run_doc("yaml-schema")
+        self.assertEqual(self.read(".vscode/settings.json"), jsonc)
+        self.assertIn("не изменён", out)
+
+    @unittest.skipUnless(HAS_YAML, "нет PyYAML")
+    def test_yaml_migrate(self):
+        blk = "data/blocks/billing/mailer.yaml"
+        new = self.read(blk)
+        legacy = (new.split("io:")[0] + "io:\n- [←, планировщик, ID счёта]\n- [→, почтовый сервис, I1]\n- [→, касса, письмо о платеже I2]\n"
+                  "data:\n- [invoices, read-write]\nparams:\n- [mail.retries, '3']\n" + "reqs:" + new.split("reqs:")[1])
+        self.write(blk, legacy)
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertEqual(rc, 1)                                                             # прежний вид не проходит строгую схему
+        rc, out, _ = self.run_doc("yaml-migrate", "--dry")
+        self.assertIn("будет переведено файлов 1", out)
+        self.assertEqual(self.read(blk), legacy)                                            # --dry ничего не пишет
+        rc, out, _ = self.run_doc("yaml-migrate")
+        self.assertIn("переведено файлов 1", out)
+        t = self.read(blk)
+        self.assertIn("- {dir: ←, with: планировщик, what: ID счёта}", t)
+        self.assertIn("- {dir: →, with: почтовый сервис, via: [I1]}", t)                    # правило плагина: I-код → via
+        self.assertIn("- {table: invoices, access: read-write}", t)
+        self.assertIn("- {name: mail.retries, value: '3'}", t)
+        self.assertIn("io[2]: I-код в тексте «письмо о платеже I2» — вынести в via", out)    # остаток текстом — для ручного разбора
+        self.assertIn("осталось текстом (разобрать вручную): 1", out)
+        self.write(blk, t.replace("with: касса", "label: касса"))
+        rc, out, _ = self.run_doc("yaml-migrate")                                           # идемпотентно
+        self.assertIn("переведено файлов 0", out)
+        self.assertEqual(self.read(blk), t.replace("with: касса", "label: касса"))
+        rc, out, _ = self.run_doc("yaml-check", blk)
+        self.assertEqual((rc, out.strip()), (0, "yaml: замечаний нет"))
+
     def test_without_pyyaml(self):
         fake = self.tmp / "без-yaml"
         fake.mkdir()
@@ -492,7 +644,7 @@ class DocTest(unittest.TestCase):
         rc, out, err = self.run_doc("check", env=env)                                     # check не падает: пропуск с предупреждением
         self.assertEqual(rc, 0, out + err)
         self.assertIn("yaml-check пропущен — нет PyYAML", err)
-        self.write("doc.config.toml", self.read("doc.config.toml").replace("[costs]\n", "[data]\nrequire_yaml = true\n\n[costs]\n", 1))
+        self.write("doc.config.toml", self.read("doc.config.toml").replace("[data]\n", "[data]\nrequire_yaml = true\n", 1))
         rc, out, _ = self.run_doc("check", env=env)
         self.assertEqual(rc, 1)
         self.assertIn("yaml: нужен PyYAML", out)
@@ -516,20 +668,56 @@ class DocTest(unittest.TestCase):
         self.assertIn("batch-billing-2.md", out)
         self.edit("tasks/1.1-invoice-export.md", "| 1.1.2 | отправка через I1 с повтором | 3 |", "| 1.1.2 | отправка через I1 с повтором | 12 |")
         self.edit("tasks/1.1-invoice-export.md", "| **Итого** | **6 ≈ 1 дн** |", "| **Итого** | **15 ≈ 2 дн** |")
-        rc, out, _ = self.run_doc("review-batch", "billing")
-        self.assertIn("⚠️ lint billing: пробелов", out)                                    # сначала автоматика
-        rc, out, _ = self.run_doc("review-batch", "billing,нет-такого")                    # несколько компонентов через запятую
+        (self.ex / ".doctool/review/batch-billing-1.md").unlink()
+        rc, out, _ = self.run_doc("review-batch", "billing")                               # компонент с lint не берётся: сначала автоматика
+        self.assertEqual(rc, 1)
+        self.assertIn("⛔ billing: пробелов lint", out)
+        self.assertIn("--force", out)
+        self.assertFalse((self.ex / ".doctool/review/batch-billing-1.md").exists())
+        rc, out, _ = self.run_doc("review-batch", "billing,нет-такого")                    # грязный отброшен, остальные взяты
         self.assertEqual(rc, 0)
-        self.assertRegex(out, r"batch-billing\+нет-такого-1\.md: страниц \d+")
+        self.assertIn("⛔ billing: пробелов lint", out)
+        self.assertIn("нет-такого: ⏳ нет", out)
+        rc, out, _ = self.run_doc("review-batch", "billing", "--force")                    # осознанно обойти
+        self.assertEqual(rc, 0)
+        self.assertRegex(out, r"batch-billing-1\.md: страниц \d+")
         self.assertIn("⚠️ lint billing: пробелов", out)
         rc, out, _ = self.run_doc("review-batch", "нет-такого")
         self.assertIn("⏳ нет", out)
 
+    def test_review_batch_header_and_own_reqs(self):
+        self.run_doc("review-batch", "billing")
+        t = (self.ex / ".doctool/review/batch-billing-1.md").read_text(encoding="utf-8")
+        self.assertIn("Каждую пару решай отдельно", t)
+        self.assertIn("≥ 40 символов", t)
+        self.assertIn("не генерировать скриптом", t)
+        # страница уровня компонента: только требования его блоков (own_reqs = "blocks"), не все со страницы
+        self.write("components/billing/overview.md", "# Обзор биллинга\n\nРассылка и экспорт счетов: R-BIL-1 и R-BIL-2.\n")
+        cfg = self.read("doc.config.toml")
+        self.write("doc.config.toml", cfg.replace('[[types]]\nname = "Deploy"', '[[types]]\nname = "Обзор компонента"\nglob = "components/*/overview.md"\n'
+                                                  'approve = "А"\n\n[[types]]\nname = "Deploy"', 1))
+        self.edit("data/blocks/billing/mailer.yaml", "reqs: [R-BIL-2]", "reqs: [R-BIL-1]")
+        self.edit("components/billing/blocks/exporter.md", "| Требования | R-BIL-1, R-BIL-2 |", "| Требования | R-BIL-1 |")
+        self.edit("components/billing/blocks/exporter.md", "затем «не отправлен» |", "затем «не отправлен» (R-BIL-1) |")
+        page = "## components/billing/overview.md"
+
+        def reqs_of_page():
+            rc, out, err = self.run_doc("review-batch", "billing", "--force")
+            self.assertEqual(rc, 0, out + err)
+            t = (self.ex / ".doctool/review/batch-billing-1.md").read_text(encoding="utf-8")
+            self.assertIn(page, t)
+            return t.split(page)[1].split("\n## ")[0]
+        self.assertIn("требования (2):", reqs_of_page())
+        self.write("doc.config.toml", self.read("doc.config.toml").replace('glob = "components/*/overview.md"\n', 'glob = "components/*/overview.md"\nown_reqs = "blocks"\n', 1))
+        own = reqs_of_page()
+        self.assertIn("требования (1):", own)
+        self.assertNotIn("R-BIL-2 ", own)
+
     def test_approve_batch(self):
         self.assert_clean()
-        good = [{"page": "deploy/billing.md", "role": "Д", "ok": True, "comment": "развёртывание и откат описаны"},
-                {"page": "R-BIL-1", "role": "Т", "ok": True, "comment": "сценарии проверяемы"},
-                {"page": "tasks/1.1-invoice-export.md", "role": "Р", "ok": False, "comment": "нет схемы | таблицы →\nдобавить"}]
+        good = [{"page": "deploy/billing.md", "role": "Д", "ok": True, "comment": "Deploy: раздел `Обновление и откат` есть, миграции обратимые, откат — предыдущий тег"},
+                {"page": "R-BIL-1", "role": "Т", "ok": True, "comment": "R-BIL-1: три сценария, каждый проверяем по входу и выходу"},
+                {"page": "tasks/1.1-invoice-export.md", "role": "Р", "ok": False, "comment": "нет схемы | таблицы invoices в задаче 1.1 →\nдобавить в «Декомпозицию»"}]
         self.write(".doctool/review/a.json", json.dumps(good, ensure_ascii=False))
         rc, out, err = self.run_doc("approve-batch", ".doctool/review/a.json")
         self.assertEqual(rc, 0, out + err)
@@ -537,13 +725,13 @@ class DocTest(unittest.TestCase):
         reg = self.read("approvals.md")
         self.assertRegex(reg, r"\| `deploy/billing.md` \| Д \| агент, роль DevOps-инженер \| 🤖 \| [\d-]+ \| ✅ \|")
         self.assertIn("| ❌ | ", reg)
-        self.assertIn("нет схемы / таблицы → добавить", reg)                                # | и перевод строки не ломают таблицу
+        self.assertIn("нет схемы / таблицы invoices в задаче 1.1 → добавить в «Декомпозицию»", reg)                                # | и перевод строки не ломают таблицу
         self.assertIn("| R-BIL-1 | Т | агент, роль Тестировщик | 🤖 |", self.read("specs/billing/approvals.md"))
         # неизвестная пара — ошибка, и реестр не меняется совсем
         before = (self.read("approvals.md"), self.read("specs/billing/approvals.md"), self.read("approvals-summary.md"))
-        bad = [{"page": "design.md", "role": "А", "ok": True, "comment": "ок"},
-               {"page": "design.md", "role": "Т", "ok": True, "comment": "Т не подтверждает решения"},
-               {"page": "R-BIL-1", "role": "Д", "ok": True, "comment": "x"}]
+        bad = [{"page": "design.md", "role": "А", "ok": True, "comment": "решение D-1 согласовано с архитектурой, границы совпадают"},
+               {"page": "design.md", "role": "Т", "ok": True, "comment": "роль Т не подтверждает решения: проверка D-1 не нужна"},
+               {"page": "R-BIL-1", "role": "Д", "ok": True, "comment": "R-BIL-1: роль Д не подтверждает это требование спеки"}]
         self.write(".doctool/review/b.json", json.dumps(bad, ensure_ascii=False))
         rc, out, _ = self.run_doc("approve-batch", ".doctool/review/b.json")
         self.assertEqual(rc, 1)
@@ -555,6 +743,65 @@ class DocTest(unittest.TestCase):
         rc, _, err = self.run_doc("approve-batch", ".doctool/review/c.json")
         self.assertEqual(rc, 1)
         self.assertIn("не прочитан JSON", err)
+
+    def test_approve_batch_guard(self):
+        self.assert_clean()
+        before = (self.read("approvals.md"), self.read("specs/billing/approvals.md"))
+        same = "Deploy: раздел `Обновление и откат` есть, откат — предыдущий тег образа"
+        pairs = [("deploy/billing.md", "Д"), ("deploy/billing.md", "Б"), ("deploy/billing.md", "С"), ("components/billing/blocks/exporter.md", "А"),
+                 ("components/billing/blocks/exporter.md", "Р"), ("components/billing/blocks/exporter.md", "Т"), ("R-BIL-1", "Т"), ("R-BIL-1", "И")]
+        tpl = [{"page": p, "role": r, "ok": True, "comment": same} for p, r in pairs]       # один комментарий у всех пар
+        self.write(".doctool/review/t.json", json.dumps(tpl, ensure_ascii=False))
+        rc, out, _ = self.run_doc("approve-batch", ".doctool/review/t.json")
+        self.assertEqual(rc, 1)
+        self.assertIn("шаблонные решения", out)
+        self.assertIn("у 8 из 8 пар", out)
+        self.assertIn("ничего не применено", out)
+        short = [{"page": "deploy/billing.md", "role": "Д", "ok": True, "comment": "всё хорошо"},        # короткий комментарий
+                 {"page": "R-BIL-1", "role": "Т", "ok": True, "comment": "сценарии описаны достаточно подробно, но без единого идентификатора"}]
+        self.write(".doctool/review/s.json", json.dumps(short, ensure_ascii=False))
+        rc, out, _ = self.run_doc("approve-batch", ".doctool/review/s.json")
+        self.assertEqual(rc, 1)
+        self.assertIn("2 решений без проверенного факта", out)
+        self.assertIn("deploy/billing.md × Д", out)
+        self.assertEqual(before, (self.read("approvals.md"), self.read("specs/billing/approvals.md")))   # реестр не тронут
+        # пороги — в конфиге: короткий комментарий разрешён, когда min_comment и fact_pattern ослаблены
+        self.write("doc.config.toml", self.read("doc.config.toml") + "\n[review]\nmin_comment = 5\nfact_pattern = '.'\n")
+        rc, out, err = self.run_doc("approve-batch", ".doctool/review/s.json")
+        self.assertEqual(rc, 0, out + err)
+        self.assertIn("применено 2", out)
+
+    def test_lint_endpoint_errors(self):
+        """Коды ошибок — у всех изменяющих эндпоинтов каталога (любой статус), не только у новых."""
+        i = "specs/billing/interfaces.md"
+        rc, out, _ = self.run_doc("lint")
+        self.assertEqual((rc, out.strip()), (0, "пробелов нет"))
+        self.edit(i, "404 — нет счёта, 409 — уже отправлен", "ошибки: —")
+        rc, out, _ = self.run_doc("lint", "billing")
+        self.assertIn("POST /invoices/{id}/send: нет кодов ошибок", out)
+        self.edit(i, "ошибки: —", "404 — нет счёта")
+        rc, out, _ = self.run_doc("lint")
+        self.assertEqual((rc, out.strip()), (0, "пробелов нет"))
+        self.edit(i, "400 — период больше `export.max_rows` строк", "—")                       # GET ошибок не требует
+        rc, out, _ = self.run_doc("lint")
+        self.assertEqual((rc, out.strip()), (0, "пробелов нет"))
+        self.assertIn("проверяет lint", (self.tmp / "rules/api.md").read_text(encoding="utf-8"))
+
+    @unittest.skipUnless(shutil.which("sh"), "нет sh")
+    def test_launcher_sh(self):
+        """tools/doc запускается как скрипт sh (Git Bash, Linux, macOS), не завися от shebang на python."""
+        head = self.doc.read_text(encoding="utf-8").splitlines()[:2]
+        self.assertEqual(head[0], "#!/usr/bin/env sh")
+        self.assertIn("python3 python py", head[1])
+        self.assertIn("sys.version_info < (3, 10)", head[1])
+        self.assertTrue((self.tmp / "tools" / "doc.cmd").is_file())
+        e = dict(os.environ, PYTHONIOENCODING="utf-8")
+        e.pop("DOC_ROOT", None)
+        r = subprocess.run(["sh", str(self.doc), "--root", str(self.ex), "check"], cwd=str(self.ex), capture_output=True, env=e)
+        self.assertEqual(r.returncode, 0, r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace"))
+        self.assertIn("замечаний нет", r.stdout.decode("utf-8"))
+        r = subprocess.run([sys.executable, str(self.doc), "--root", str(self.ex), "check"], cwd=str(self.ex), capture_output=True, env=e)
+        self.assertEqual(r.returncode, 0)                                                      # и как python-скрипт
 
     # ---------- расход токенов ----------
     @unittest.skipUnless(HAS_YAML, "нет PyYAML")

@@ -1,0 +1,73 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "title": "Единица «model»",
+ "description": "Единица данных вида «model» (конфиг [[data.kinds]]). Генерируется: python ../../tools/doc yaml-schema — не править руками.",
+ "type": "object",
+ "properties": {
+  "name": {
+   "type": "string"
+  },
+  "owner": {
+   "type": "string"
+  },
+  "source": {
+   "type": "string",
+   "enum": [
+    "✅ есть",
+    "📘 внешний протокол",
+    "🧩 наше решение"
+   ]
+  },
+  "why": {
+   "type": "string"
+  },
+  "interfaces": {
+   "type": "array",
+   "items": {
+    "anyOf": [
+     {
+      "$ref": "catalog.schema.json#/definitions/interface"
+     },
+     {
+      "const": ""
+     }
+    ]
+   }
+  },
+  "fields": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "type": {
+      "type": "string"
+     },
+     "required": {
+      "type": "boolean"
+     },
+     "desc": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "name",
+     "type",
+     "required",
+     "desc"
+    ]
+   }
+  }
+ },
+ "additionalProperties": false,
+ "required": [
+  "name",
+  "owner",
+  "source",
+  "why",
+  "fields"
+ ]
+}

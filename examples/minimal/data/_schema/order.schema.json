@@ -1,0 +1,9 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "title": "Порядок единиц папки",
+ "description": "Имена файлов папки без .yaml в порядке показа.",
+ "type": "array",
+ "items": {
+  "type": "string"
+ }
+}

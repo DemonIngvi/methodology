@@ -4,6 +4,7 @@
 Реестр пишут параллельно несколько проверяющих — запись идёт под файловой блокировкой (`<реестр>.lock`).
 """
 import contextlib
+import collections
 import datetime
 import os
 import re
@@ -268,6 +269,34 @@ def set_decision(ctx, page: str, letter: str, ok: bool, comment: str, human: boo
     if errs:
         raise SystemExit(errs[0])
     return done[0]
+
+
+FACT_RX = r"[A-Z]{1,4}-?[A-Z]*-?\d|`|\b[A-Z]\d+\b|\d+\.\d+"
+
+
+def batch_guard(ctx, items: list) -> list:
+    """Защита пачки от шаблонных решений (rules/approvals.md#economy): пусто — можно применять.
+
+    Отклоняется весь JSON, если один комментарий у большой доли пар (`[review] template_share`, 0.10, от `template_min_pairs`, 5 пар)
+    или у решения нет проверенного факта: комментарий короче `min_comment` (40) символов либо без ID / поля / номера (`fact_pattern`)."""
+    ds = [d for d in items if isinstance(d, dict)]
+    if not ds:
+        return []
+    share = float(ctx.get("review.template_share", 0.10))
+    minpairs = int(ctx.get("review.template_min_pairs", 5))
+    minlen = int(ctx.get("review.min_comment", 40))
+    fact = re.compile(ctx.get("review.fact_pattern", FACT_RX))
+    out = []
+    top = collections.Counter(str(d.get("comment", "")) for d in ds).most_common(1)
+    if len(ds) >= minpairs and top[0][1] > max(2, int(len(ds) * share)):
+        out.append(f"шаблонные решения: комментарий «{top[0][0][:60]}» у {top[0][1]} из {len(ds)} пар — у каждой пары свой "
+                   f"проверенный факт")
+    short = [f"{d.get('page')} × {d.get('role')}" for d in ds
+             if len(str(d.get("comment", ""))) < minlen or not fact.search(str(d.get("comment", "")))]
+    if short:
+        out.append(f"{len(short)} решений без проверенного факта (нужно ≥ {minlen} символов и ID / поле / номер из карточки), "
+                   f"например: {', '.join(short[:5])}")
+    return out
 
 
 def set_decisions(ctx, items: list, human: bool = False, who: str = "") -> tuple:

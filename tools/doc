@@ -1,7 +1,10 @@
-#!/usr/bin/env python3
+#!/usr/bin/env sh
+''''true; for p in python3 python py; do if command -v "$p" >/dev/null 2>&1 && "$p" -c 'import sys; sys.exit(sys.version_info < (3, 10))' >/dev/null 2>&1; then exec "$p" "$0" "$@"; fi; done; echo "doc: нужен Python 3.10+ (python3, python или py не найден в PATH)" >&2; exit 1 # '''
 """doctool: tools/doc <команда> [аргументы] — правило в момент правки, проверки, подтверждения ролями.
 
-Запуск: `tools/doc check` (Linux, macOS, Git Bash) или `python tools/doc check` (любая ОС, в том числе Windows).
+Один файл читают и sh, и Python (строка 2: для sh — поиск python3 / python / py версии 3.10+ и exec, для Python — строка-комментарий):
+`tools/doc check` работает в Git Bash, Linux, macOS (shebang не зависит от заглушки «python» Windows Store);
+`python tools/doc check` — на любой ОС; `tools\\doc.cmd check` — в cmd.exe.
 Конфиг — doc.config.toml в корне проекта; контракт команд — tools/README.md.
 """
 import os

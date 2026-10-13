@@ -17,6 +17,12 @@
     @ref_kind("table")                       # каталог ID для ссылок карточек блоков: вернуть (regex, множество ID)
     def tables(ctx): ...
 
+    @migration("block")                      # yaml-migrate: fn(ctx, значение, путь) -> новое значение (позиционные → именованные и т. п.)
+    def to_named(ctx, v, rel): ...
+
+    @migration_report("block")               # что осталось текстом: вернуть список строк для ручного разбора
+    def left(ctx, v, rel): ...
+
     @card_kind("api")                        # карточка страницы для review-batch: [[types]] card = "api"; вернуть строки
     def api_card(ctx, page, text): ...
 
@@ -35,6 +41,8 @@ class Registry:
         self.commands = {}
         self.ref_kinds = {}
         self.card_kinds = {}
+        self.migrations = {}
+        self.migration_reports = {}
         self.loaded = []
 
 
@@ -73,6 +81,22 @@ def ref_kind(name: str):
 def card_kind(name: str):
     def deco(fn):
         REGISTRY.card_kinds[name] = fn
+        return fn
+    return deco
+
+
+def migration(kind: str):
+    """Правило `yaml-migrate` для вида единиц: fn(ctx, значение, путь) -> новое значение (порядок — как зарегистрированы)."""
+    def deco(fn):
+        REGISTRY.migrations.setdefault(kind, []).append(fn)
+        return fn
+    return deco
+
+
+def migration_report(kind: str):
+    """Что осталось текстом после перевода (для ручного разбора): fn(ctx, значение, путь) -> [строки]."""
+    def deco(fn):
+        REGISTRY.migration_reports.setdefault(kind, []).append(fn)
         return fn
     return deco
 
