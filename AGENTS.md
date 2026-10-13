@@ -2,6 +2,22 @@
 
 Инструкции для любого ИИ-агента (Claude Code, Codex, Cursor, Gemini, Copilot) и человека. Подключите этот файл к проекту и замените команды `doc …` на инструменты своего проекта ([контракт команд](tools/README.md)). Пока инструментов нет, каждый шаг выполняется вручную по таблицам в [rules/](rules/README.md).
 
+<a id="task-entry"></a>
+
+## Тип задачи → читай только сценарий
+
+Сначала определи тип задачи и читай **только** его сценарий и то, на что он ссылается. **README, остальные разделы этого файла (кроме [«Безопасность»](#security)) и полные правила `rules/` для таких задач не читать** — сценарий сам называет нужные разделы.
+
+| Тип задачи | Читай только | Не читай |
+|---|---|---|
+| R&D (выбор технологии, подхода, состава потоков, новый продукт) | [skills/doc-rnd.md](skills/doc-rnd.md) + [templates/rnd.md](templates/rnd.md) + нужные якоря [rules/rnd.md](rules/rnd.md) по карте сценария | README, `rules/rnd.md` целиком, остальные правила |
+| правка документа | [skills/doc-edit.md](skills/doc-edit.md) | README, `rules/` целиком |
+| данные: интеграции, модели, таблицы, эндпоинты | [skills/doc-data.md](skills/doc-data.md) | README, `rules/` целиком |
+| двойное чтение (понятность двумя читателями) | [skills/doc-dual-read.md](skills/doc-dual-read.md) | README, `rules/` целиком |
+| подтверждение документа ролью | [agents/doc-reviewer.md](agents/doc-reviewer.md) | README, `rules/` целиком |
+
+Задача не подходит ни под один тип — дальше по этому файлу.
+
 ## Правило в момент правки — инструмент, а не чтение всех правил
 
 Правил много. **Не читай `rules/` целиком** — получай выжимку для файла, который правишь.
@@ -17,7 +33,7 @@
 | подтвердить документ ролью | промпт [agents/doc-reviewer.md](agents/doc-reviewer.md); `doc review-pack`, `doc approve`, `doc review-queue` | [подтверждения](rules/approvals.md) |
 | статус замечания | `doc finding <компонент> <ID> ok\|wait\|owner "<что сделано>"` | [замечания](rules/review.md#findings) |
 | посмотреть схемы | `doc diagram <файл>` — mermaid-схемы файла отрисованной страницей | [формат схем](rules/diagrams.md) |
-| новое R&D | `doc rnd <slug> <тема>` — заготовка, проходящая проверку структуры | [шаблон](templates/rnd.md) |
+| новое R&D | `doc rnd <slug> <тема>`, `doc rnd-check <файл>` — заготовка и проверка структуры (в этом репозитории переносятся) | скопировать [шаблон](templates/rnd.md); проверка — ручной путь в [сценарии](skills/doc-rnd.md) |
 
 ## Порядок работы с документом
 
@@ -52,15 +68,9 @@
 
 ## Сценарии
 
-| Работа | Сценарий |
-|---|---|
-| правка любого документа | [skills/doc-edit.md](skills/doc-edit.md) |
-| интеграции, модели данных, таблицы, эндпоинты | [skills/doc-data.md](skills/doc-data.md) |
-| новое исследование (R&D) | [skills/doc-rnd.md](skills/doc-rnd.md) |
-| проверка понятности двумя читателями | [skills/doc-dual-read.md](skills/doc-dual-read.md) |
-| подтверждение документа ролью | [agents/doc-reviewer.md](agents/doc-reviewer.md) |
+По типу задачи — [таблица в начале](#task-entry). Правила полностью — [rules/README.md](rules/README.md).
 
-Правила полностью — [rules/README.md](rules/README.md).
+<a id="security"></a>
 
 ## Безопасность
 
