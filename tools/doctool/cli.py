@@ -23,7 +23,7 @@ USAGE = """doctool — правило в момент правки, провер
   tools/doc unit <ID|путь>            карточка единицы данных YAML: поля без пустых + «связано: …»
   tools/doc yaml-check [путь]         схема единиц data/: поля, типы, значения, ссылки, _order.yaml (код 1)
   tools/doc yaml-fmt [путь]           порядок ключей по схеме, единый стиль, новые единицы в _order.yaml
-  tools/doc review-batch <компонент> [--max 30]  пачка ⏳-страниц: карточки для всех ролей в одном файле
+  tools/doc review-batch <комп>[,<комп>…] [--max 40]  пачка ⏳-страниц: карточки для всех ролей в одном файле
   tools/doc approve-batch <файл.json> [--human]  решения пачки [{page, role, ok, comment}] одним захватом реестра
   tools/doc review-pack <стр.> <буква>  пакет проверки одной роли (запасной режим)
   tools/doc review-queue [буква]      что ждёт решения роли
@@ -217,18 +217,23 @@ def main(argv=None) -> int:
         mx = int(args[args.index("--max") + 1]) if "--max" in args else 0
         rest = [a for i, a in enumerate(args) if not a.startswith("--") and not (i and args[i - 1] == "--max")]
         if not rest:
-            raise SystemExit(f"использование: {ctx.command} review-batch <компонент> [--max 30] (общие страницы — «-»)")
+            raise SystemExit(f"использование: {ctx.command} review-batch <комп>[,<комп>…] [--max 40] (общие страницы — «-»)")
         comp = rest[0]
         res = RV.batch(ctx, comp, mx)
-        cpt = float(ctx.get("review.chars_per_token", 3) or 3)
+        cpt = float(ctx.get("review.chars_per_token", 1.6) or 1.6)
+        ovh = int(ctx.get("review.agent_overhead", 19500) or 0)
         for p, jf, n, k, c in res:
-            _out(f"{ctx.show(p)}: страниц {n}, пар {k}, символов {c}, ≈{c / cpt:.0f} ток. всего, ≈{c / cpt / max(n, 1):.0f} на страницу; "
+            tok = c / cpt
+            _out(f"{ctx.show(p)}: страниц {n}, пар {k}, символов {c}, ≈{tok:.0f} ток. карточек, ≈{tok / max(n, 1):.0f} на страницу; "
+                 f"с накладными агента ≈{(tok + ovh + 100 * n) / max(n, 1):.0f} на страницу; "
                  f"ответ — {ctx.show(jf)} → {ctx.command} approve-batch {ctx.show(jf)}")
         if not res:
             _out(f"{comp}: ⏳ нет")
-        gaps = len(LN.run(ctx).get("—" if comp in ("-", "—") else comp, []))
-        if gaps:
-            _out(f"⚠️ lint {comp}: пробелов {gaps} — сначала их (роли механику не повторяют): {ctx.command} lint {comp}")
+        lg = LN.run(ctx)
+        for cc in comp.split(","):
+            cc = "—" if cc.strip() in ("-", "—", "") else cc.strip()
+            if lg.get(cc):
+                _out(f"⚠️ lint {cc}: пробелов {len(lg[cc])} — сначала их (роли механику не повторяют): {ctx.command} lint {cc}")
     elif cmd == "approve-batch":
         need(1, "approve-batch <файл.json> [--human] [--who ИМЯ]")
         who = args[args.index("--who") + 1] if "--who" in args else ""

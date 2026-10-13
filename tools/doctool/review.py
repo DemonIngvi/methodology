@@ -304,14 +304,15 @@ def card(ctx, rel: str) -> str:
 
 
 def batch(ctx, comp: str, maxn: int = 0) -> list:
-    """Пачки ⏳-страниц компонента в .doctool/review/batch-<компонент>-<N>.md → [(путь .md, путь .json, страниц, пар, символов)]."""
-    maxn = maxn or int(ctx.get("review.batch_max", 30))
-    want = "—" if comp in ("-", "—", "") else comp
+    """Пачки ⏳-страниц компонентов (через запятую) в .doctool/review/batch-<компоненты>-<N>.md → [(путь .md, путь .json, страниц, пар, символов)]."""
+    maxn = maxn or int(ctx.get("review.batch_max", 40))
+    wants = [("—" if c.strip() in ("-", "—", "") else c.strip()) for c in comp.split(",")]
+    want = "+".join(wants)
     pages = {}
     by_req = ctx.get("requirements.approvals.enabled")
     specs = set(ctx.spec_files())
     for page, letter, _ in A.queue(ctx):
-        if not (ctx.root / page).is_file() or comp_of(ctx, page) != want:
+        if not (ctx.root / page).is_file() or comp_of(ctx, page) not in wants:
             continue
         if by_req and page in specs:  # спека подтверждается по требованиям: пара — «ID требования × роль»
             for (rid, l), c in A._read_req(A.req_file(ctx, page)).items():

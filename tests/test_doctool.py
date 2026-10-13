@@ -501,7 +501,7 @@ class DocTest(unittest.TestCase):
     def test_review_batch(self):
         rc, out, err = self.run_doc("review-batch", "billing")
         self.assertEqual(rc, 0, err)
-        self.assertRegex(out, r"batch-billing-1\.md: страниц \d+, пар \d+, символов \d+, ≈\d+ ток\. всего, ≈\d+ на страницу")
+        self.assertRegex(out, r"batch-billing-1\.md: страниц \d+, пар \d+, символов \d+, ≈\d+ ток\. карточек, ≈\d+ на страницу; с накладными агента ≈\d+ на страницу")
         self.assertNotIn("⚠️ lint", out)
         t = (self.ex / ".doctool/review/batch-billing-1.md").read_text(encoding="utf-8")
         for s in ("Вопросы ролей:", "- Т Тестировщик: как проверить", "approve-batch", "## tasks/1.1-invoice-export.md · роли: ВРТ",
@@ -518,6 +518,10 @@ class DocTest(unittest.TestCase):
         self.edit("tasks/1.1-invoice-export.md", "| **Итого** | **6 ≈ 1 дн** |", "| **Итого** | **15 ≈ 2 дн** |")
         rc, out, _ = self.run_doc("review-batch", "billing")
         self.assertIn("⚠️ lint billing: пробелов", out)                                    # сначала автоматика
+        rc, out, _ = self.run_doc("review-batch", "billing,нет-такого")                    # несколько компонентов через запятую
+        self.assertEqual(rc, 0)
+        self.assertRegex(out, r"batch-billing\+нет-такого-1\.md: страниц \d+")
+        self.assertIn("⚠️ lint billing: пробелов", out)
         rc, out, _ = self.run_doc("review-batch", "нет-такого")
         self.assertIn("⏳ нет", out)
 

@@ -127,7 +127,7 @@ DEFAULTS = {
     "tooling": {"docs": ["AGENTS.md", "CLAUDE.md", "skills/*.md", "agents/*.md", ".claude/skills/*/SKILL.md", ".claude/agents/*.md"]},
     # review-batch: карточки страниц для всех ролей; card в [[types]] — task | block | unit | sections | плагин
     "review": {"checklist_sections": ["Чек-лист", "Из чего состоит"], "card_max": 2500, "block_max": 1500,
-               "batch_max": 30, "chars_per_token": 3},
+               "batch_max": 40, "chars_per_token": 1.6, "agent_overhead": 19500},
     "move": {"extra": ["**/*.py", "**/*.toml", "**/*.json", "**/*.yml", "**/*.yaml", "**/*.txt"]},
     "rnd": {"dir": "rnd", "template": "templates/rnd.md", "index": "rnd/README.md", "check": True, "check_glob": [],
             "index_row": "| [{title}]({file}) | {title} | черновик | v3.1 |"},

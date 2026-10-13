@@ -219,7 +219,9 @@ edges = [
 [review]
 card_max = 2500
 block_max = 1500
-batch_max = 30
+batch_max = 40
+chars_per_token = 1.6     # кириллица ≈ 1,6–2 символа на токен (латиница ≈ 3–4)
+agent_overhead = 19500    # накладные агента без тяжёлых инструментов, токенов
 
 [lint]
 # механика до ролей: task-acceptance-coverage … deploy-migrations (tools/README.md, команда lint)
