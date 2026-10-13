@@ -14,7 +14,7 @@ sed -n '/^<a id="e3">/,/^<a id="e4">/p' rules/rnd.md          # этап Э3
 awk '/^<a id="/{f=0} /^<a id="greenfield">/{f=1} f' rules/rnd.md   # любой якорь
 ```
 
-Инструмент `tools/doc` в репозитории методологии пока переносится: команды `rnd <slug> <тема>` и `rnd-check <файл>` будут. Ниже у каждой команды — ручной путь.
+Команды `tools/doc rnd <slug> <тема>` и `tools/doc rnd-check <файл>` — в [doctool](../tools/README.md) (на Windows — `python tools/doc …`). Ниже у каждой команды — ручной путь.
 
 ## Шаги
 

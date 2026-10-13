@@ -1,0 +1,216 @@
+# doc.config.toml — настройка doctool под проект (tools/doc). Создан `tools/doc init`.
+# Всё, что зависит от раскладки репозитория, — здесь; правила (колонки таблиц) читаются из rules_dir при каждом вызове.
+# Пути — от корня проекта, шаблоны: * — внутри папки, ** — любое число папок. Контракт команд — tools/README.md.
+
+# Плагины проекта: папки или файлы .py (см. tools/README.md#plugins); встроенные — builtin_plugins (например "datamodel").
+# Ключи верхнего уровня — до первой [таблицы].
+plugins = []
+builtin_plugins = []
+
+[project]
+name = "Мой проект"
+command = "tools/doc"       # как вызывать инструмент — подставляется в подсказки агенту
+rules_dir = "rules"         # методологии (rules/ из methodology)
+work_dir = ".doctool"       # пакеты проверки, схемы, блокировки — добавьте в .gitignore
+
+# Генерируемые файлы: pre / hook-pre запрещают их правку (код 2) и называют источник;
+# staged не пускает их в коммит, если commit = false.
+# [[generated]]
+# glob = "docs/stories/*.md"
+# by = "python scripts/build_stories.py"
+# source = "data/stories.json"
+# commit = true
+
+# Типы документов: glob → тип. Колонки «Обязательные разделы», «Правила», «Синхронизировать», «Методология»
+# берутся из rules/doc-types.md по имени типа; здесь их можно переопределить (required, rules, sync, methodology).
+# approve — буквы ролей, которые подтверждают тип (по умолчанию — из таблицы rules/approvals.md «Кто подтверждает»).
+# sections — обязательные разделы (строгая проверка check), recommended — рекомендуемые (lint).
+# Если [[types]] нет совсем, типы и пути берутся из колонки «Где» таблицы rules/doc-types.md.
+[[types]]
+name = "Главная / архитектура"
+glob = ["architecture.md"]
+approve = "АВ"
+
+[[types]]
+name = "Spec"
+glob = ["specs/*/spec.md"]
+approve = ""                 # спека подтверждается по требованиям — [requirements.approvals]
+
+[[types]]
+name = "Параметры и интерфейсы спеки"
+glob = ["specs/*/interfaces.md"]
+
+[[types]]
+name = "Открытые вопросы спеки"
+glob = ["specs/*/open-questions.md"]
+
+[[types]]
+name = "Как работает"
+glob = ["how/*.md"]
+
+[[types]]
+name = "Интеграции"
+glob = ["api/*.md"]
+approve = "АРТ"
+
+[[types]]
+name = "Deploy"
+glob = ["deploy/*.md"]
+approve = "СДБ"
+sections = ["## Образы", "## Запуск", "## Переменные и секреты", "## Сборка и поставка", "## Проверка после развёртывания"]
+recommended = ["## Обновление и откат"]
+
+[[types]]
+name = "User Stories"
+glob = ["stories/*.md"]
+approve = "ИПВ"
+
+[[types]]
+name = "Задача"
+glob = ["tasks/*.md"]
+approve = "РТВ"
+sections = ["## Закрывает требования", "## Зачем", "## Приёмка", "## Декомпозиция"]
+
+[[types]]
+name = "Roadmap / сводная таблица / бэклог"
+glob = ["ROADMAP.md", "TASKS.md", "BACKLOG.md"]
+
+[[types]]
+name = "R&D"
+glob = ["rnd/*.md"]
+approve = "ВА"
+exclude = ["rnd/README.md"]   # реестр R&D — не исследование; структуру проверяет rnd-check
+
+[[types]]
+name = "Решения"
+glob = ["design.md", "decisions/*.md"]
+approve = "ВА"
+
+[[types]]
+name = "Замечания компонента"
+glob = ["reviews/findings/*.md"]
+
+[[types]]
+name = "Правила и методологии"
+glob = ["rules/*.md"]
+approve = "ВА"
+approve_as = "Методология"
+
+# Роли: пусто — буквы, имена и вопросы из таблицы rules/approvals.md «Роли и буквы».
+# [[roles]]
+# letter = "А"
+# name = "Архитектор"
+# question = "где живут данные, как связаны модули"
+
+[approvals]
+registry = "approvals.md"           # реестр «документ × роль» с версией текста
+summary = "approvals-summary.md"    # сводная таблица «документ × роли» ("" — не вести)
+skip = ["**/README.md"]             # не подтверждаются
+version_ignore = []                 # regex частей текста, которые не меняют версию (шкалы, даты сборки)
+lock_timeout = 30                   # секунд ждать блокировку реестра (параллельные проверяющие)
+
+[requirements]
+specs = ["specs/*/spec.md"]
+id = "R-[A-Z0-9]+-\\d+"                         # формат ID требования
+heading = "^###\\s+Requirement:\\s*(.+?)\\s*$"
+task_field = "Реализует задача"                 # в строке ID: «Реализует задача: [1.2](...)»
+no_task = ["не в MVP", "BACKLOG"]               # пометки «задачи нет осознанно»
+anchor = true                                   # <a id="r-…"></a> перед заголовком требования
+min_scenarios = 3                               # lint
+open_questions = "open-questions.md"            # рядом со спекой
+
+[requirements.approvals]
+enabled = true
+file = "approvals.md"                           # рядом со спекой
+default = "ИТ"                                  # функциональное: аналитик историй, тестировщик
+# by_title = { "Хранилища данных" = "АД" }      # иначе — из таблицы rules/approvals.md «Подтверждение требований»
+
+[tasks]
+glob = ["tasks/*.md"]
+id = "\\d+\\.\\d+"                              # N.M
+id_from_name = "^(\\d+\\.\\d+)-"                # tasks/1.2-slug.md
+requirements_section = "Закрывает требования"
+closed = ["❌ закрыта"]
+component_column = "Компонент"                  # колонка таблицы оценок
+roadmap = "ROADMAP.md"
+roadmap_hours_col = 0                           # номер колонки часов в Roadmap (0 — не сверять итоги)
+
+[tasks.subtasks]
+section = "Декомпозиция"
+hours_col = 3
+done_col = 4
+min = 2
+max = 8
+total_label = "Итого"
+
+# Производные списки задач (генерируются из Roadmap) — должны совпадать с ним.
+# [[tasks.derived]]
+# file = "openspec/changes/x/tasks.md"
+# pattern = "^- \\[[ x]\\] (\\d+\\.\\d+)"
+# by = "python scripts/tasksmd.py"
+
+[components]
+# list = [{ slug = "billing", code = "BIL", name = "Биллинг" }]
+# source = "data/components.json"     # или файл данных: JSON / TOML / YAML (YAML — если есть PyYAML)
+# key = "components"
+from_path = ["(?:^|/)(?:api|deploy|how|stories|reviews/findings)/(?P<c>[^/.]+)", "(?:^|/)components/(?P<c>[^/]+)/"]
+
+[findings]
+dir = "reviews/findings"
+file = "{component}.md"
+id = "Z-{code}-{n}"                   # префикс — код компонента
+
+[blocks]
+glob = ["components/*/blocks/*.md"]   # карточки по templates/block-card.md; или source = "data/blocks.json"
+# fields — поля карточки и их обязательность; по умолчанию — поля templates/block-card.md
+
+# Каталоги ID: ссылки на них в карточках блоков проверяются; check_refs = true — проверять во всех документах.
+[ids.decision]
+pattern = "\\bD-?\\d+\\b"
+defined_in = ["design.md", "decisions/*.md"]
+define = "^#{2,4}\\s+(D-?\\d+)\\b"
+check_refs = false
+
+# Граф связности для next: узел → шаблоны путей; связь — [от, к, что проверить].
+[graph]
+edges = [
+  ["Методология", "Инструменты", "проверки, выжимка route, сценарии — до правки документов"],
+  ["R&D", "Решения", "у выбора есть D-номер; последствия Э10 внесены"],
+  ["Решения", "Архитектура", "нет текста, противоречащего решению"],
+  ["Архитектура", "Спека", "границы и названия"],
+  ["Спека", "Параметры и интерфейсы", "конфигурация, хранилища, интерфейсы, FMEA"],
+  ["Спека", "Как работает", "порядок работы"],
+  ["Спека", "Задачи", "приёмка, ссылка на требование"],
+  ["Параметры и интерфейсы", "Deploy", "значения в примере конфигурации, переменные"],
+  ["Задачи", "Сводки", "строка и итоги"],
+]
+
+[graph.nodes]
+"Методология" = ["rules/*.md"]
+"Инструменты" = ["tools/doc", "doc.config.toml", "AGENTS.md"]
+"R&D" = ["rnd/*.md"]
+"Решения" = ["design.md", "decisions/*.md"]
+"Архитектура" = ["architecture.md"]
+"Спека" = ["specs/*/spec.md"]
+"Параметры и интерфейсы" = ["specs/*/interfaces.md"]
+"Как работает" = ["how/*.md"]
+"Deploy" = ["deploy/*.md"]
+"Задачи" = ["tasks/*.md"]
+"Сводки" = ["ROADMAP.md", "TASKS.md"]
+
+[lint]
+enable = ["subtasks", "requirement-scenarios", "block-card", "block-screens", "recommended-sections", "task-acceptance"]
+
+[check]
+disable = []                          # links, anchors, orphans, trace, tasks, blocks, findings, sections, ids, tooling, approvals
+entries = ["README.md", "AGENTS.md", "CLAUDE.md"]   # точки входа — не «сироты»
+# nav = ["mkdocs.yml"]                # .md из навигации сайта — не «сироты»
+# nav_base = "docs"
+anchor_styles = ["github", "mkdocs"]
+
+[rnd]
+dir = "rnd"
+template = "templates/rnd.md"   # шаблон R&D v3.2 из methodology
+index = "rnd/README.md"         # реестр R&D: сюда rnd добавляет строку (можно README.md корня — тогда index_row под его таблицу)
+check = true                    # check включает rnd-check для всех R&D проекта
+

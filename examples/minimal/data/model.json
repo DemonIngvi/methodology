@@ -1,0 +1,8 @@
+{
+  "tables": {
+    "invoices": {"owner": "billing", "columns": {"id": "uuid", "amount": "numeric", "status": "text"}}
+  },
+  "interfaces": {
+    "I1": {"from": "billing", "to": "почтовый сервис", "what": "счёт"}
+  }
+}

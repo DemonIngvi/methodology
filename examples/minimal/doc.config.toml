@@ -1,0 +1,178 @@
+# Пример настройки doctool для минимального проекта (см. tools/README.md).
+# Правила берутся из methodology/rules этого же репозитория; в своём проекте — rules_dir = "rules".
+plugins = ["tools/doc_plugins"]
+builtin_plugins = ["datamodel"]
+
+[project]
+name = "Минимальный пример"
+command = "python ../../tools/doc"
+rules_dir = "../../rules"
+work_dir = ".doctool"
+
+[[generated]]
+glob = ["approvals.md", "approvals-summary.md", "specs/*/approvals.md"]
+by = "tools/doc check / approve"
+source = "решения ролей — tools/doc approve"
+commit = true
+
+[[generated]]
+glob = "TASKS.md"
+by = "tools/doc tasks-table (плагин tools/doc_plugins/house.py)"
+source = "tasks/*.md"
+commit = true
+
+[[generated]]
+glob = "site/**"
+by = "сборка сайта"
+source = "исходники *.md"
+commit = false
+
+[[types]]
+name = "Главная / архитектура"
+glob = "architecture.md"
+approve = "АВ"
+
+[[types]]
+name = "Spec"
+glob = "specs/*/spec.md"
+approve = ""
+sections = ["## Purpose"]
+
+[[types]]
+name = "Параметры и интерфейсы спеки"
+glob = "specs/*/interfaces.md"
+
+[[types]]
+name = "Открытые вопросы спеки"
+glob = "specs/*/open-questions.md"
+
+[[types]]
+name = "Страница блока"
+glob = "components/*/blocks/*.md"
+approve = "АРТ"
+approve_as = "Блок"
+
+[[types]]
+name = "Deploy"
+glob = "deploy/*.md"
+approve_as = "Deploy"
+sections = ["## Образы", "## Запуск", "## Переменные и секреты", "## Сборка и поставка", "## Проверка после развёртывания"]
+recommended = ["## Обновление и откат"]
+
+[[types]]
+name = "Задача"
+glob = "tasks/*.md"
+sections = ["## Закрывает требования", "## Зачем", "## Приёмка", "## Декомпозиция"]
+
+[[types]]
+name = "Roadmap / сводная таблица / бэклог"
+glob = ["ROADMAP.md", "TASKS.md"]
+
+[[types]]
+name = "R&D"
+glob = "rnd/*.md"
+exclude = "rnd/README.md"
+
+[[types]]
+name = "Решения"
+glob = "design.md"
+
+[[types]]
+name = "Замечания компонента"
+glob = "reviews/findings/*.md"
+
+[approvals]
+registry = "approvals.md"
+summary = "approvals-summary.md"
+lock_timeout = 10
+
+[requirements]
+specs = ["specs/*/spec.md"]
+id = 'R-[A-Z]+-\d+'
+min_scenarios = 3
+
+[requirements.approvals]
+enabled = true
+default = "ИТ"
+
+[tasks]
+glob = ["tasks/*.md"]
+roadmap = "ROADMAP.md"
+roadmap_hours_col = 4
+
+[components]
+source = "data/components.json"
+key = "components"
+from_path = ["(?:^|/)(?:deploy|reviews/findings)/(?P<c>[^/.]+)", "(?:^|/)(?:components|specs)/(?P<c>[^/]+)/"]
+
+[findings]
+dir = "reviews/findings"
+id = "Z-{code}-{n}"
+
+[blocks]
+glob = ["components/*/blocks/*.md"]
+fields = [
+  { name = "Что делает", required = true },
+  { name = "Технология", required = true },
+  { name = "Истории", required = false },
+  { name = "Входы и выходы", required = true, refs = ["interface"] },
+  { name = "Данные", required = true, refs = ["table"] },
+  { name = "Параметры", required = true, refs = ["param"] },
+  { name = "Требования", required = true, refs = ["requirement"] },
+  { name = "Задачи", required = true, refs = ["task"] },
+  { name = "При сбое", required = true },
+  { name = "Почему так", required = true, refs = ["decision"] },
+]
+
+[ids.param]
+pattern = '`([a-z][\w.]*)`'
+defined_in = ["specs/*/interfaces.md"]
+define = '^\|\s*`([^`]+)`\s*\|'
+
+[ids.decision]
+pattern = '\bD-\d+\b'
+defined_in = ["design.md"]
+define = '^#{2,4}\s+(D-\d+)\b'
+check_refs = true
+refs_in = ["**/*.md"]
+
+[graph]
+edges = [
+  ["Инструменты", "Спека", "выжимка route и проверки по новым правилам"],
+  ["Решения", "Архитектура", "нет текста, противоречащего решению"],
+  ["Архитектура", "Спека", "границы и названия"],
+  ["Спека", "Параметры и интерфейсы", "конфигурация, интерфейсы, FMEA"],
+  ["Спека", "Задачи", "приёмка, ссылка на требование"],
+  ["Спека", "Блоки", "требования в карточке"],
+  ["Параметры и интерфейсы", "Модель данных", "I-коды и таблицы"],
+  ["Параметры и интерфейсы", "Deploy", "значения в примере конфигурации"],
+  ["Задачи", "Сводки", "строка и итоги"],
+]
+
+[graph.nodes]
+"Инструменты" = ["doc.config.toml", "tools/doc_plugins/*.py"]
+"Решения" = ["design.md"]
+"Архитектура" = ["architecture.md"]
+"Спека" = ["specs/*/spec.md"]
+"Параметры и интерфейсы" = ["specs/*/interfaces.md"]
+"Модель данных" = ["data/model.json"]
+"Блоки" = ["components/*/blocks/*.md"]
+"Deploy" = ["deploy/*.md"]
+"Задачи" = ["tasks/*.md"]
+"Сводки" = ["ROADMAP.md", "TASKS.md"]
+
+[lint]
+enable = ["subtasks", "requirement-scenarios", "block-card", "block-screens", "recommended-sections", "task-acceptance", "placeholders"]
+
+[check]
+entries = ["README.md"]
+
+[rnd]
+dir = "rnd"
+template = "../../templates/rnd.md"
+index = "rnd/README.md"
+index_row = "| [{title}]({file}) | {title} | черновик | v3.2 |"
+
+[plugin.datamodel]
+file = "data/model.json"
+interfaces_in = ["specs/*/interfaces.md"]

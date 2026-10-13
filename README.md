@@ -21,15 +21,15 @@
 
 ## Как подключить к проекту
 
-1. Скопируйте в корень репозитория `AGENTS.md` (и `CLAUDE.md`, если используете Claude Code) и папку `rules/`. При желании — `skills/`, `agents/`, `templates/`.
+1. Скопируйте в корень репозитория `AGENTS.md` (и `CLAUDE.md`, если используете Claude Code), папки `rules/` и `tools/`. При желании — `skills/`, `agents/`, `templates/`.
 2. **Адаптируйте таблицы** — они и есть настройка под проект:
    - [rules/structure.md](rules/structure.md) — уровни, вкладки компонента, общие разделы, где лежат файлы;
    - [rules/doc-types.md](rules/doc-types.md) — строка на тип документа: колонка «Где» — шаблоны путей вашего репозитория;
    - [rules/doc-graph.md](rules/doc-graph.md) — связи между документами;
    - [rules/change-process.md](rules/change-process.md#single-source) — таблица «факт → источник»;
    - [rules/approvals.md](rules/approvals.md) — какие роли подтверждают какие документы.
-3. Замените в `AGENTS.md` команды-заглушки (`doc route`, `doc next`, `doc check`…) на свои; что они должны делать — [tools/README.md](tools/README.md). Начать можно без инструментов: агент выполняет те же шаги вручную по таблицам.
-4. Подключите проверку ссылок: `python tools/mdlinks.py .` — битые относительные ссылки, якоря и «сироты» в Markdown (зависимостей нет).
+3. Создайте конфиг инструмента: `python tools/doc init` → `doc.config.toml` (раскладка путей, роли, граф связей, форматы ID; [установка и конфиг](tools/README.md#install)); затем `python tools/doc check` и хуки агента ([хуки](tools/README.md#hooks)). Пример настроенного проекта — [examples/minimal](examples/minimal/README.md). Начать можно и без инструмента: агент выполняет те же шаги вручную по таблицам.
+4. Минимальная проверка без конфига: `python tools/mdlinks.py .` — битые относительные ссылки, якоря и «сироты» в Markdown (зависимостей нет).
 5. Удалите методологии, которые проекту не нужны (например, `deploy.md` для библиотеки), и строки о них в `rules/README.md` и `rules/doc-types.md`.
 
 ## Карта файлов
@@ -63,7 +63,10 @@
 | [rules/deviations.md](rules/deviations.md) | журнал отклонений (шаблон) |
 | [agents/doc-reviewer.md](agents/doc-reviewer.md) | промпт проверяющего документа по роли |
 | [skills/](skills/) | пошаговые сценарии: правка документа, данные, R&D, два читателя |
-| [tools/README.md](tools/README.md) | контракт команд, которые стоит реализовать в проекте |
+| [tools/README.md](tools/README.md) | doctool: установка, конфиг, команды (контракт), плагины, хуки |
+| `tools/doc`, `tools/doctool/` | doctool — инструмент правил документации (Python 3.10+, без зависимостей); проектное — в `doc.config.toml` и плагинах |
+| [examples/minimal/](examples/minimal/README.md) | пример настроенного проекта: конфиг, спека, задача, карточка блока, Deploy, замечания, плагин |
+| `tests/` | тесты всех команд doctool на примере: `python -m unittest discover -s tests` |
 | [tools/mdlinks.py](tools/mdlinks.py) | независимая проверка битых ссылок, якорей и «сирот» в Markdown |
 | [templates/](templates/) | шаблоны документов: задача, R&D, требование, карточка блока, Deploy, замечания, реестр подтверждений, решение |
 | [templates/project-readme.md](templates/project-readme.md) | минимальный корень нового проекта: README с реестром R&D и реестром решений ([правило](rules/structure.md#new-project)) |

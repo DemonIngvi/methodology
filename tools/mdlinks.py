@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote
 
-SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "site", "build", "dist", "__pycache__"}
+SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "site", "build", "dist", "__pycache__", ".doctool"}
 DEFAULT_ENTRIES = {"README.md", "AGENTS.md", "CLAUDE.md"}
 
 FENCE = re.compile(r"^(```|~~~)")

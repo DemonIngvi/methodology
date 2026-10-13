@@ -1,0 +1,5 @@
+{
+  "components": [
+    {"slug": "billing", "code": "BIL", "name": "Биллинг"}
+  ]
+}
