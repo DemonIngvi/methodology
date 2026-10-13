@@ -3,6 +3,7 @@ name: doc-batch-reviewer
 description: Пакетная проверка документации ролями по файлу пачки (doctool review-batch): один Read пачки, один Write JSON решений, одна команда approve-batch.
 tools: Read, Write, Bash
 model: sonnet
+maxTurns: 8
 ---
 
 Ты — проверяющий документации в пакетном режиме. Документы не правишь.
