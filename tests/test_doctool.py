@@ -833,6 +833,33 @@ class DocTest(unittest.TestCase):
         rc, _, err = self.run_doc("cost", "add", "new-process", "10k", "1", "документ")
         self.assertEqual(rc, 1)
         self.assertIn("укажи --method", err)
+
+    @unittest.skipUnless(HAS_YAML, "нет PyYAML")
+    def test_cost_from_transcript(self):
+        tr = self.ex / "transcripts" / "proj" / "sess1" / "subagents"
+        tr.mkdir(parents=True)
+        u1 = {"input_tokens": 10, "cache_creation_input_tokens": 1000, "cache_read_input_tokens": 3000, "output_tokens": 90}
+        u2 = {"input_tokens": 5, "cache_creation_input_tokens": 500, "cache_read_input_tokens": 4100, "output_tokens": 95}
+        lines = [{"message": {"id": "m1", "model": "claude-sonnet-5-5", "usage": u1}},
+                 {"message": {"id": "m1", "model": "claude-sonnet-5-5", "usage": u1}},            # второй блок того же ответа
+                 {"message": {"role": "user", "content": "x"}},
+                 {"message": {"id": "m2", "model": "claude-sonnet-5-5", "usage": u2}}]
+        (tr / "agent-abc123.jsonl").write_text("\n".join(json.dumps(x) for x in lines), encoding="utf-8")
+        (tr / "agent-abc123.meta.json").write_text(json.dumps({"description": "пачка 1"}), encoding="utf-8")
+        self.edit("doc.config.toml", "[costs]", f"[costs]\ntranscripts = \"{(self.ex / 'transcripts').as_posix()}\"")
+        rc, out, _ = self.run_doc("cost", "from-transcript", "abc123")
+        self.assertEqual(rc, 0)
+        self.assertIn("2 вызовов, всего 8,8 тыс.", out)                                  # 4100 + 4700, дубль m1 не считан
+        self.assertIn("итоговый контекст 4,7 тыс.", out)
+        rc, out, _ = self.run_doc("cost", "agents")
+        self.assertIn("| abc123 | пачка 1 | sonnet-5-5 | 2 |", out)
+        rc, out, _ = self.run_doc("cost", "add", "review-batch", "-", "4", "документ", "--agents", "abc123")
+        self.assertEqual(rc, 0)
+        self.assertIn("2,2 тыс. на единицу", out)                                         # 8800 / 4
+        self.assertIn("calls: 2", self.read("data/costs.yaml"))
+        rc, _, err = self.run_doc("cost", "from-transcript", "nope")
+        self.assertEqual(rc, 1)
+        self.assertIn("журнал не найден", err)
         rc, _, err = self.run_doc("cost", "add", "new-process", "10k", "1", "документ", "--method", "approvals.md#нет-якоря")
         self.assertIn("нет якоря #нет-якоря", err)
         rc, out, err = self.run_doc("cost", "add", "new-process", "10k", "1", "документ", "--method", "change-process.md#bulk", "--expect", "5-20")

@@ -101,6 +101,9 @@ COSTS_KIND = {
         {"name": "model", "type": "str"},
         {"name": "minutes", "type": "int"},
         {"name": "expected", "type": "list", "items": {"type": "int"}},
+        {"name": "agents", "type": "list", "items": {"type": "str"}},
+        {"name": "calls", "type": "int"},
+        {"name": "context", "type": "int"},
         {"name": "note", "type": "str"},
     ]}}],
 }

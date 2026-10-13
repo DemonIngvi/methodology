@@ -43,6 +43,18 @@
        "type": "integer"
       }
      },
+     "agents": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "calls": {
+      "type": "integer"
+     },
+     "context": {
+      "type": "integer"
+     },
      "note": {
       "type": "string"
      }

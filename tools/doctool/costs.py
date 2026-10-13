@@ -4,12 +4,18 @@
     cost add <процесс> <токены> <единиц> <единица> [--method файл#якорь] [--expect a-b] [--model M] [--min N]
                                            [--note …] [--date ГГГГ-ММ-ДД]
     cost md                                перегенерировать страницу `[costs] page`
+    cost from-transcript <id>…             фактический расход агента (или сессии) по журналу вызовов
+    cost agents [сессия]                   все агенты: вызовы, сумма, итоговый контекст, описание
+    cost add <процесс> - <единиц> <единица> --agents id,id   токены и вызовы — из журналов агентов
 
 Журнал — `[costs] file` (YAML — нужен PyYAML; JSON — без зависимостей). Токены: 409000, 409k или сумма 84.9k+68.6k;
 --expect: «2-4» (тыс.), «150k-250k», «2000-4000» — токены на единицу. Статус ✅ — замер на единицу в [мин / допуск,
 макс × допуск] (допуск `[costs] tolerance`, по умолчанию 2), иначе ⚠️ «расхождение >2×»: остановиться и разобрать.
+Расход — сумма input + запись кэша + чтение кэша + output по всем вызовам модели (уникальные message.id) из журналов
+Claude Code (`[costs] transcripts`, по умолчанию ~/.claude/projects: <сессия>.jsonl, <сессия>/subagents/agent-<id>.jsonl).
 """
 import json
+import os
 import re
 from datetime import date
 from pathlib import Path
@@ -122,7 +128,74 @@ def parse_expect(s: str) -> list:
     return [round(lo * k), round(hi * k)]
 
 
-OPTS = ("--model", "--min", "--expect", "--note", "--method", "--date")
+USAGE_KEYS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+
+
+def _transcripts(ctx) -> Path:
+    return Path(os.path.expanduser(str(ctx.get("costs.transcripts", "") or "~/.claude/projects")))
+
+
+def transcript_usage(path: Path) -> dict:
+    """Сумма usage по уникальным message.id: строки-блоки одного ответа повторяют его usage."""
+    seen, tot, last, model = set(), dict.fromkeys(USAGE_KEYS, 0), 0, ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            m = json.loads(line).get("message") or {}
+        except (ValueError, AttributeError):
+            continue
+        u, mid = m.get("usage"), m.get("id")
+        if not isinstance(u, dict) or not mid or mid in seen:
+            continue
+        seen.add(mid)
+        for k in USAGE_KEYS:
+            tot[k] += u.get(k) or 0
+        last = sum(u.get(k) or 0 for k in USAGE_KEYS)  # итоговый контекст ≈ subagent_tokens отчёта — не расход
+        model = m.get("model", model)
+    tot.update(calls=len(seen), total=sum(tot[k] for k in USAGE_KEYS), last=last, model=model)
+    return tot
+
+
+def transcript_file(ctx, aid: str) -> Path:
+    """Журнал агента по id (во всех проектах) или главной сессии по её uuid."""
+    aid, base = aid.removeprefix("agent-"), _transcripts(ctx)
+    fs = list(base.glob(f"*/*/subagents/agent-{aid}.jsonl")) or list(base.glob(f"*/{aid}.jsonl"))
+    if not fs:
+        raise SystemExit(f"{aid}: журнал не найден в {base} (ни агент, ни сессия; [costs] transcripts)")
+    return fs[0]
+
+
+def from_transcript(ctx, ids) -> str:
+    if not ids:
+        raise SystemExit(f"использование: {ctx.command} cost from-transcript <agentId|uuid сессии>…")
+    L, grand = [], 0
+    for aid in ids:
+        t = transcript_usage(transcript_file(ctx, aid))
+        grand += t["total"]
+        L.append(f"{aid}: {t['calls']} вызовов, всего {fmt_n(t['total'])} (чтение кэша {fmt_n(t['cache_read_input_tokens'])}, "
+                 f"запись кэша {fmt_n(t['cache_creation_input_tokens'])}, вход {fmt_n(t['input_tokens'])}, выход {fmt_n(t['output_tokens'])}); "
+                 f"итоговый контекст {fmt_n(t['last'])}; {t['model']}")
+    if len(ids) > 1:
+        L.append(f"итого: {grand} ({fmt_n(grand)})")
+    return "\n".join(L)
+
+
+def agents(ctx, session: str = "") -> str:
+    from datetime import datetime
+    fs = sorted(_transcripts(ctx).glob(f"*/{session or '*'}/subagents/agent-*.jsonl"), key=lambda f: f.stat().st_mtime)
+    L = ["| агент | описание | модель | вызовов | всего | итоговый контекст | дата |", "|---|---|---|---|---|---|---|"]
+    for f in fs:
+        meta = f.with_suffix(".meta.json")
+        try:
+            d = json.loads(meta.read_text(encoding="utf-8")).get("description", "") if meta.is_file() else ""
+        except ValueError:
+            d = ""
+        t = transcript_usage(f)
+        L.append(f"| {f.stem.removeprefix('agent-')} | {d} | {t['model'].removeprefix('claude-')} | {t['calls']} | {fmt_n(t['total'])} | "
+                 f"{fmt_n(t['last'])} | {datetime.fromtimestamp(f.stat().st_mtime):%Y-%m-%d %H:%M} |")
+    return "\n".join(L) if fs else f"журналов агентов нет в {_transcripts(ctx)}"
+
+
+OPTS = ("--model", "--min", "--expect", "--note", "--method", "--date", "--agents")
 
 
 def add(ctx, args) -> str:
@@ -138,13 +211,16 @@ def add(ctx, args) -> str:
             pos.append(args[i])
             i += 1
     if len(pos) < 4:
-        raise SystemExit(f"использование: {ctx.command} cost add <процесс> <токены> <единиц> <единица> "
+        raise SystemExit(f"использование: {ctx.command} cost add <процесс> <токены|-> <единиц> <единица> [--agents id,id] "
                          "[--method файл#якорь] [--expect a-b] [--model M] [--min N] [--note …] [--date ГГГГ-ММ-ДД]")
     try:
         units = int(pos[2])
     except ValueError:
         raise SystemExit(f"единиц «{pos[2]}»: нужно целое число")
-    proc, tokens, unit = pos[0], parse_tokens(pos[1]), " ".join(pos[3:])
+    ids = [x for x in re.split(r"[,\s]+", opts.get("agents", "")) if x]
+    us = [transcript_usage(transcript_file(ctx, x)) for x in ids]
+    proc, unit = pos[0], " ".join(pos[3:])
+    tokens = sum(u["total"] for u in us) if ids else parse_tokens(pos[1])
     rows = load(ctx)
     prev = [r for r in rows if r["process"] == proc]
     method = opts.get("method") or (prev[-1]["methodology"] if prev else "")
@@ -160,6 +236,10 @@ def add(ctx, args) -> str:
         rec["expected"] = parse_expect(opts["expect"])
     elif prev and prev[-1].get("expected"):
         rec["expected"] = prev[-1]["expected"]
+    if ids:
+        rec["agents"], rec["calls"], rec["context"] = ids, sum(u["calls"] for u in us), sum(u["last"] for u in us)
+        if "model" not in opts and us[0]["model"]:
+            rec["model"] = us[0]["model"].removeprefix("claude-")
     if "note" in opts:
         rec["note"] = opts["note"]
     errs = []
@@ -217,11 +297,11 @@ def md(ctx) -> str:
     L += ["", "## Замеры по процессам", ""]
     for p, rs in procs.items():
         L += [f'<a id="{p}"></a>', "", f"### {titles.get(p, p)}", "", f"Методология: {meth(rs[-1]['methodology'])}.", "",
-              "| Дата | Единиц | Единица | Токенов | На единицу | Модель | Минут | Статус | Примечание |",
-              "|---|---|---|---|---|---|---|---|---|"]
+              "| Дата | Единиц | Единица | Токенов | На единицу | Вызовов | Итоговый контекст | Модель | Минут | Статус | Примечание |",
+              "|---|---|---|---|---|---|---|---|---|---|---|"]
         for r in rs:
             L.append(f"| {r['date']} | {r['units']} | {r['unit']} | {fmt_n(r['tokens'])} | {fmt_n(per_unit(r))} | "
-                     f"{r.get('model', '—')} | {r.get('minutes', '—')} | {status(ctx, r)} | {str(r.get('note', '')).replace('|', '/')} |")
+                     f"{r.get('calls', '—')} | {fmt_n(r['context']) if r.get('context') else '—'} | {r.get('model', '—')} | {r.get('minutes', '—')} | {status(ctx, r)} | {str(r.get('note', '')).replace('|', '/')} |")
         L.append("")
     return "\n".join(L)
 
@@ -274,4 +354,8 @@ def main(ctx, args) -> tuple:
         if not ctx.get("costs.page"):
             raise SystemExit("страница не задана: [costs] page = \"token-costs.md\"")
         return f"{ctx.get('costs.page')}: " + ("обновлено" if write_md(ctx) else "без изменений"), 0
-    raise SystemExit(f"использование: {ctx.command} cost [add …|md]")
+    if args[0] == "from-transcript":
+        return from_transcript(ctx, args[1:]), 0
+    if args[0] == "agents":
+        return agents(ctx, args[1] if len(args) > 1 else ""), 0
+    raise SystemExit(f"использование: {ctx.command} cost [add …|md|from-transcript <id>…|agents [сессия]]")

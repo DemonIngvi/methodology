@@ -114,7 +114,7 @@ DEFAULTS = {
     # Данные в YAML по единице (rules/data.md#yaml): [[data.kinds]] name, glob, id, id_pattern, title, component, regen, fields
     "data": {"kinds": [], "order_file": "_order.yaml", "require_yaml": False, "methodology": "data.md#yaml"},
     # Учёт расхода токенов (rules/token-costs.md): журнал, генерируемая страница, названия процессов, допуск
-    "costs": {"file": "", "page": "", "titles": {}, "tolerance": 2},
+    "costs": {"file": "", "page": "", "titles": {}, "tolerance": 2, "transcripts": "~/.claude/projects"},
     "ids": {},
     "graph": {"nodes": {}, "edges": []},
     "lint": {"enable": ["subtasks", "requirement-scenarios", "block-card", "block-screens", "recommended-sections",
