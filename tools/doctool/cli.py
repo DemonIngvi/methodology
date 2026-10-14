@@ -25,7 +25,7 @@ USAGE = """doctool — правило в момент правки, провер
   tools/doc yaml-fmt [путь]           порядок ключей по схеме, единый стиль, новые единицы в _order.yaml
   tools/doc yaml-schema               JSON Schema редактора (data/_schema) и yaml.schemas в .vscode/settings.json
   tools/doc yaml-migrate [путь] [--dry]  перевод единиц в текущую схему (positional → именованные поля, правила плагинов)
-  tools/doc review-batch <комп>[,<комп>…] [--max 40] [--force]  пачка ⏳-страниц чистых компонентов (lint = 0; --force — обойти)
+  tools/doc review-batch <комп>[,<комп>…] | --pages <префикс>[,…] [--max 40] [--force]  пачка ⏳-страниц чистых компонентов (lint = 0; --force — обойти) или документов по префиксу пути
   tools/doc approve-batch <файл.json> [--human]  решения пачки [{page, role, ok, comment}] одним захватом реестра; шаблон и комментарий без факта — отказ
   tools/doc review-pack <стр.> <буква>  пакет проверки одной роли (запасной режим)
   tools/doc review-queue [буква]      что ждёт решения роли
@@ -240,11 +240,14 @@ def main(argv=None) -> int:
             return 1
     elif cmd == "review-batch":
         mx = int(args[args.index("--max") + 1]) if "--max" in args else 0
-        rest = [a for i, a in enumerate(args) if not a.startswith("--") and not (i and args[i - 1] == "--max")]
+        pref = args[args.index("--pages") + 1] if "--pages" in args else ""
+        rest = [a for i, a in enumerate(args) if not a.startswith("--") and not (i and args[i - 1] in ("--max", "--pages"))]
+        if pref:
+            rest = [pref]
         if not rest:
             raise SystemExit(f"использование: {ctx.command} review-batch <комп>[,<комп>…] [--max 40] [--force] (общие страницы — «-»)")
         comp = rest[0]
-        lg = LN.run(ctx)
+        lg = {} if pref else LN.run(ctx)  # --pages: страницы вне компонентов, lint-барьер не применяется (механику ловит check)
         names = [("—" if c.strip() in ("-", "—", "") else c.strip()) for c in comp.split(",")]
         dirty = [c for c in names if lg.get(c)]
         if dirty and "--force" not in args:  # механика — до ролей: роли не платят за то, что ловит lint (rules/approvals.md#economy)
@@ -253,7 +256,7 @@ def main(argv=None) -> int:
             comp = ",".join(c for c in comp.split(",") if ("—" if c.strip() in ("-", "—", "") else c.strip()) not in dirty)
             if not comp:
                 return 1
-        res = RV.batch(ctx, comp, mx)
+        res = RV.batch(ctx, comp, mx, pref)
         cpt = float(ctx.get("review.chars_per_token", 1.6) or 1.6)
         ovh = int(ctx.get("review.agent_overhead", 19500) or 0)
         for p, jf, n, k, c in res:

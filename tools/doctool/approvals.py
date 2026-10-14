@@ -271,7 +271,8 @@ def set_decision(ctx, page: str, letter: str, ok: bool, comment: str, human: boo
     return done[0]
 
 
-FACT_RX = r"[A-Z]{1,4}-?[A-Z]*-?\d|`|\b[A-Z]\d+\b|\d+\.\d+"
+# проверенный факт: ID (R-…, US-…, D20, I3), `код`, номер 2.5.3, раздел «…», метод или код ответа HTTP, #якорь
+FACT_RX = (r"[A-Z]{1,4}-?[A-Z]*-?\d|`|\b[A-Z]\d+\b|\d+\.\d+|«[^»]{3,}»|\b(?:GET|POST|PUT|PATCH|DELETE)\b|\b[2-5]\d\d\b|#[a-z][\w-]+")
 
 
 def batch_guard(ctx, items: list) -> list:

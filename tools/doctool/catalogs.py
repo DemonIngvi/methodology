@@ -7,6 +7,7 @@
     about = "компонент или блок"                  # пояснение в ошибке и в JSON Schema
     kinds = ["component", "block"]                # ID единиц этих видов [[data.kinds]]
     fields = [{ kind = "component", field = "name" }]   # значения поля единиц вида
+    keys = [{ kind = "participants", field = "aliases" }]   # ключи словаря-поля (каталог псевдонимов участников)
     files = [{ glob = "specs/*/interfaces.md", pattern = '^\\| (S\\d+) \\|' }]  # регулярка по файлам (группа 1 или всё совпадение)
     values = ["a", "b"]                           # перечисление в конфиге
 
@@ -48,6 +49,10 @@ def _build(ctx, c: dict) -> set:
         for _, (_, v) in UN.units(ctx, f["kind"]).items():
             x = v.get(f["field"]) if isinstance(v, dict) else None
             out |= {str(i) for i in (x if isinstance(x, list) else [x]) if i not in (None, "")}
+    for f in U.as_list(c.get("keys")):  # ключи словаря-поля: каталог псевдонимов {подпись: участник}
+        for _, (_, v) in UN.units(ctx, f["kind"]).items():
+            x = v.get(f["field"]) if isinstance(v, dict) else None
+            out |= {str(i) for i in (x if isinstance(x, dict) else {})}
     for f in U.as_list(c.get("files")):
         rx = re.compile(f["pattern"], re.M)
         for rel in ctx.glob(f.get("glob", [])):
@@ -86,7 +91,7 @@ def about(ctx, name: str) -> str:
 def _cols(ctx) -> dict:
     d = ctx.get("data.params", {}) or {}
     return {"name": d.get("name_col", "Параметр"), "default": d.get("default_col", "По умолчанию"),
-            "min": d.get("min_col", "Мин"), "max": d.get("max_col", "Макс"), "what": d.get("what_col", "Что задаёт")}
+            "min": d.get("min_col", "Мин"), "max": d.get("max_col", "Макс"), "what": d.get("what_col", "Что задаёт"), "type": d.get("type_col", "Тип")}
 
 
 def _clean(s: str) -> str:
@@ -117,6 +122,10 @@ def parse_dur(ctx, s):
 
 def param_type(ctx, r: dict):
     """Формальный тип параметра по колонкам default / min / max или None (описан словами)."""
+    if r.get("decl"):  # явная колонка «Тип» важнее вывода из default / min / max
+        t = parse_decl(r["decl"])
+        if t:
+            return t
     d, mn, mx = (_clean(r.get(k, "")) for k in ("default", "min", "max"))
     nd, nmn, nmx = parse_num(ctx, d), parse_num(ctx, mn), parse_num(ctx, mx)
     if nd and nmn and nd[1] == nmn[1]:
@@ -138,7 +147,44 @@ def param_type(ctx, r: dict):
     return None
 
 
+def parse_decl(s):
+    """Явный «Тип» таблицы параметров → dict типа или None. Грамматика: число [ед.] · длительность · одно из: a, b ·
+    список <каталог> · ссылка <что> · строка [<мин>–<макс> симв.] · доля окна % · части через « / » (составной)."""
+    s = str(s).strip().strip("`")
+    parts = [p.strip() for p in s.split(" / ")]
+    if len(parts) > 1:
+        ps = [parse_decl(p) for p in parts]
+        return {"kind": "composite", "parts": ps} if all(ps) else None
+    m = re.fullmatch(r"число(?:\s+(\S+))?", s)
+    if m:
+        return {"kind": "number", "unit": m.group(1) or "", "min": 0.0, "max": None}
+    if s == "длительность":
+        return {"kind": "duration", "min": 0.0, "max": None}
+    if s.startswith("одно из:"):
+        v = [x.strip() for x in s[8:].split(",") if x.strip()]
+        return {"kind": "enum", "values": v} if v else None
+    m = re.fullmatch(r"(список|ссылка)\s+(.+)", s)
+    if m:
+        return {"kind": "list" if m.group(1) == "список" else "ref", "what": m.group(2)}
+    m = re.fullmatch(r"строка(?:\s+(\d[\d  ]*)[–-](\d[\d  ]*)\s+симв\.)?", s)
+    if m:
+        f = lambda x: int(re.sub(r"[  ]", "", x)) if x else None
+        return {"kind": "string", "min": f(m.group(1)), "max": f(m.group(2))}
+    if s == "доля окна %":
+        return {"kind": "percent"}
+    return None
+
+
 def type_text(t) -> str:
+    k = t["kind"]
+    if k == "composite":
+        return " / ".join(type_text(p) for p in t["parts"])
+    if k in ("list", "ref"):
+        return ("список: " if k == "list" else "ссылка: ") + t["what"]
+    if k == "string":
+        return "строка" + (f" {t['min']}–{t['max']} симв." if t["min"] is not None else "")
+    if k == "percent":
+        return "доля окна, %"
     if t["kind"] == "number":
         u = f" {t['unit']}" if t["unit"] else ""
         return f"число{u} от {t['min']:g}" + (f" до {t['max']:g}" if t["max"] is not None else "")
@@ -149,6 +195,16 @@ def type_text(t) -> str:
 
 def value_ok(ctx, t, v: str) -> bool:
     """Значение параметра соответствует формальному типу."""
+    k = t["kind"]
+    if k == "composite":
+        vs = [x.strip() for x in v.split(" / ")]
+        return len(vs) == len(t["parts"]) and all(value_ok(ctx, p, x) for p, x in zip(t["parts"], vs))
+    if k in ("list", "ref"):
+        return bool(v.strip())
+    if k == "string":
+        return (t["min"] is None or len(v) >= t["min"]) and (t["max"] is None or len(v) <= t["max"])
+    if k == "percent":
+        return bool(re.fullmatch(r"\d+\s*%( окна)?", v.strip()))
     if t["kind"] == "number":
         n = parse_num(ctx, v)
         return bool(n) and n[1] == t["unit"] and n[0] >= t["min"] and (t["max"] is None or n[0] <= t["max"])
@@ -169,7 +225,8 @@ def all_params(ctx) -> dict:
                 name = U.plain(U.col(r, cols["name"])).strip("`")
                 if name and name not in d:
                     row = {"file": rel, "default": U.plain(U.col(r, cols["default"])), "min": U.plain(U.col(r, cols["min"])),
-                           "max": U.plain(U.col(r, cols["max"])), "what": U.plain(U.col(r, cols["what"]))}
+                           "max": U.plain(U.col(r, cols["max"])), "what": U.plain(U.col(r, cols["what"])),
+                           "decl": U.plain(U.col(r, cols["type"]))}
                     row["type"] = param_type(ctx, row)
                     d[name] = row
             out[rel] = d

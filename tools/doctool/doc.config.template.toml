@@ -223,11 +223,13 @@ edges = [
 
 # Строгая структура: каталоги значений для ref (откуда собирать ID), тип параметров из таблиц спек, JSON Schema для редактора.
 # [data]
+# guard_id_fields = ["via", "reqs", "decisions"]   # запись единицы не теряет ID из этих списков (rules/data.md#yaml-units)
 # schema_dir = "data/_schema"        # yaml-schema; check ловит устаревшую схему
 # none_prefix = "нет:"
 # [data.params]
 # glob = "specs/*/interfaces.md"
 # name_col = "Параметр"
+# type_col = "Тип"                  # необязательная колонка формального типа (rules/sdd.md#params)
 # default_col = "По умолчанию"
 # min_col = "Мин"
 # max_col = "Макс"

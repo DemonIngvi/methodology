@@ -425,9 +425,56 @@ def unit_text(ctx, rel: str, value, fields=None) -> str:
     return (_header(U.read(p)) if p.is_file() else "") + text
 
 
-def write_unit(ctx, rel: str, value, fields=None, dry=False) -> bool:
-    """Записать единицу; True — файл изменился (dry — только сообщить)."""
+def ref_ids(node, keys) -> set:
+    """(путь строки, ID) из списковых полей keys — для проверки, что запись не теряет ID."""
+    out, stack = set(), [((), node)]
+    while stack:
+        path, n = stack.pop()
+        if isinstance(n, dict):
+            for k, x in n.items():
+                if k in keys and isinstance(x, list):
+                    out |= {f"{'.'.join(path)}:{i}" for i in x}
+                else:
+                    stack.append((path + (str(k),), x))
+        elif isinstance(n, list):
+            stack += [(path + (str(i),), x) for i, x in enumerate(n)]
+    return out
+
+
+def restore_ids(old, new, keys):
+    """Вернуть в строки new ID полей keys из old, если ID по-прежнему стоит в тексте строки (ID в поле и в тексте — допустимо)."""
+    if isinstance(old, dict) and isinstance(new, dict):
+        text = " ".join(str(x) for x in new.values() if isinstance(x, str))
+        for k in keys:
+            if isinstance(old.get(k), list):
+                back = [i for i in old[k] if i not in (new.get(k) or []) and re.search(rf"(?<![\w-]){re.escape(str(i))}(?![\w-])", text)]
+                if back:
+                    new[k] = [i for i in old[k] if i in (new.get(k) or []) or i in back] + [i for i in (new.get(k) or []) if i not in old[k]]
+        for k, x in new.items():
+            if k in old and k not in keys:
+                restore_ids(old[k], x, keys)
+    elif isinstance(old, list) and isinstance(new, list):
+        for o, n in zip(old, new):
+            restore_ids(o, n, keys)
+
+
+def write_unit(ctx, rel: str, value, fields=None, dry=False, drop_ids=False) -> bool:
+    """Записать единицу; True — файл изменился (dry — только сообщить).
+
+    Поля-списки ID из `[data] guard_id_fields` (например via, reqs, decisions) не теряются молча: ID, пропавший из поля, но
+    стоящий в тексте строки, возвращается; иначе запись падает с ValueError. Намеренное удаление ID — `drop_ids=True`."""
     p = ctx.root / rel
+    keys = tuple(U.as_list(ctx.get("data.guard_id_fields")))
+    if keys and p.is_file() and not drop_ids and isinstance(value, (dict, list)):
+        try:
+            old = load(p)
+        except Exception:
+            old = None
+        if old is not None:
+            restore_ids(old, value, keys)
+            lost = ref_ids(old, keys) - ref_ids(value, keys)
+            if lost:
+                raise ValueError(f"{rel}: запись потеряла бы ID из полей: {', '.join(sorted(lost))} (намеренно — drop_ids=True)")
     text = unit_text(ctx, rel, value, fields)
     if p.is_file() and U.read(p) == text:
         return False
@@ -449,8 +496,11 @@ def fmt(ctx, path=None) -> list:
             v = load(ctx.root / f)
         except Exception:
             continue  # сначала yaml-check
-        if isinstance(v, dict) and write_unit(ctx, f, v, k.get("fields")):
-            changed.append(f)
+        try:
+            if isinstance(v, dict) and write_unit(ctx, f, v, k.get("fields")):
+                changed.append(f)
+        except ValueError as e:  # формат потерял бы ID из полей — файл не трогаем
+            print(f"⚠️ {e}")
     on = order_name(ctx)
     for d in sorted({Path(f).parent.as_posix() for f in files}):
         o = f"{d}/{on}"

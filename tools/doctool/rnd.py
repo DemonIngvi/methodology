@@ -93,6 +93,13 @@ def rnd_check(text: str) -> list:
             issues.append(f"Э{n}: нет ворот G{n} со статусом ✅ или ⚠️")
         elif g.group(1) == "⚠️" and "📌" not in g.group(2):
             issues.append(f"Э{n}: G{n} ⚠️ без 📌 владельцу и следующего шага (rules/rnd.md#gate-status)")
+    head = "\n".join(text.splitlines()[:12]).lower()
+    if "тип: архитектурное решение" in head:  # мягкая проверка слоя 2 (rules/rnd.md#layer2): по ключевым словам, не по структуре
+        low = text.lower()
+        for key, what in (("техническое решение", "раздел «Техническое решение»"), ("response measure", "сценарии с response measure"),
+                          ("fitness", "fitness-функции"), ("дерево качества", "дерево качества")):
+            if key not in low:
+                issues.append(f"слой 2 (предупреждение): нет «{what}» — rules/rnd.md#layer2")
     src = re.search(r"^## Источники\s*\n(.*?)(?=^## |\Z)", text, flags=re.M | re.S)
     if not src:
         issues.append("нет раздела «## Источники»")

@@ -894,5 +894,52 @@ class DocTest(unittest.TestCase):
             self.assertIn(s, out)
 
 
+class PortedFunctionsTest(unittest.TestCase):
+    """Чистые функции: проверенный факт, «Тип» параметра, слой 2 R&D, защита ID при записи."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPO / "tools"))
+
+    def test_fact_pattern(self):
+        import re
+        from doctool import approvals as A
+        for ok in ("раздел «Обновление и откат» есть", "метод POST /invoices описан", "ответ 409 указан", "см. #economy", "R-BIL-1 покрыт"):
+            self.assertTrue(re.search(A.FACT_RX, ok), ok)
+        self.assertFalse(re.search(A.FACT_RX, "всё хорошо, замечаний нет"))
+
+    def test_param_decl_type(self):
+        from doctool import catalogs as C
+        t = C.parse_decl("число $ / число $")
+        self.assertEqual(t["kind"], "composite")
+        self.assertTrue(C.value_ok(None, t, "5 $ / 10 $"))
+        self.assertFalse(C.value_ok(None, t, "5 $"))
+        self.assertTrue(C.value_ok(None, C.parse_decl("одно из: a, b"), "a"))
+        self.assertTrue(C.value_ok(None, C.parse_decl("строка 3–5 симв."), "abcd"))
+        self.assertFalse(C.value_ok(None, C.parse_decl("строка 3–5 симв."), "ab"))
+        self.assertIsNone(C.parse_decl("как-нибудь"))
+        self.assertEqual(C.param_type(None, {"decl": "длительность", "default": "", "min": "", "max": ""})["kind"], "duration")
+
+    def test_rnd_check_layer2(self):
+        from doctool import rnd as R
+        head = "# R&D: x\n\nтип: архитектурное решение\n"
+        self.assertTrue(any("слой 2" in i for i in R.rnd_check(head)))
+        full = head + "дерево качества, Техническое решение, response measure, fitness"
+        self.assertFalse(any("слой 2" in i for i in R.rnd_check(full)))
+        self.assertFalse(any("слой 2" in i for i in R.rnd_check("# R&D: y\n\nобщее исследование\n")))
+
+    def test_restore_ids(self):
+        from doctool import units as U
+        keys = ("via", "reqs")
+        old = {"rows": [{"text": "вызов I3", "via": ["I3"], "reqs": ["R-1"]}]}
+        new = {"rows": [{"text": "вызов I3 и R-1"}]}
+        U.restore_ids(old, new, keys)
+        self.assertEqual(new["rows"][0]["via"], ["I3"])                 # ID стоит в тексте — возвращён
+        self.assertEqual(U.ref_ids(old, keys) - U.ref_ids(new, keys), set())
+        lost = {"rows": [{"text": "без ссылок"}]}
+        U.restore_ids(old, lost, keys)
+        self.assertTrue(U.ref_ids(old, keys) - U.ref_ids(lost, keys))   # ID нет и в тексте — потеря видна write_unit
+
+
 if __name__ == "__main__":
     unittest.main()

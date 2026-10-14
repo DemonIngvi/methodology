@@ -307,16 +307,19 @@ def card(ctx, rel: str) -> str:
     return "\n".join(body + ([f"требования ({len(rl)}):"] + rl if rl else []) + tail)
 
 
-def batch(ctx, comp: str, maxn: int = 0) -> list:
-    """Пачки ⏳-страниц компонентов (через запятую) в .doctool/review/batch-<компоненты>-<N>.md → [(путь .md, путь .json, страниц, пар, символов)]."""
+def batch(ctx, comp: str, maxn: int = 0, prefixes: str = "") -> list:
+    """Пачки ⏳-страниц компонентов (через запятую) в .doctool/review/batch-<компоненты>-<N>.md → [(путь .md, путь .json, страниц, пар, символов)].
+    prefixes (`--pages`) — вместо компонентов: страницы по префиксу пути (`rules,rnd,index.md`), для документов вне компонентов."""
     maxn = maxn or int(ctx.get("review.batch_max", 40))
     wants = [("—" if c.strip() in ("-", "—", "") else c.strip()) for c in comp.split(",")]
-    want = "+".join(wants)
+    want = "pages-" + re.sub(r"[^\w]+", "_", prefixes.replace(",", "+"))[:60] if prefixes else "+".join(wants)
     pages = {}
     by_req = ctx.get("requirements.approvals.enabled")
     specs = set(ctx.spec_files())
     for page, letter, _ in A.queue(ctx):
-        if not (ctx.root / page).is_file() or comp_of(ctx, page) not in wants:
+        if not (ctx.root / page).is_file():
+            continue
+        if (not page.startswith(tuple(prefixes.split(",")))) if prefixes else (comp_of(ctx, page) not in wants):
             continue
         if by_req and page in specs:  # спека подтверждается по требованиям: пара — «ID требования × роль»
             for (rid, l), c in A._read_req(A.req_file(ctx, page)).items():
@@ -333,7 +336,7 @@ def batch(ctx, comp: str, maxn: int = 0) -> list:
         letters = [x for x in order if any(x in ls for _, ls in chunk)]
         out = ctx.work_dir / "review" / f"batch-{want}-{n}.md"
         jf = out.with_suffix(".json")
-        H = [f"# Пачка проверки: {want} · {n}", "", "Вопросы ролей:",
+        H = [f"# Пачка проверки: {prefixes or want} · {n}", "", "Вопросы ролей:",
              *[f"- {x} {ctx.role_name(x)}: {next((q for l, _, q in ctx.roles() if l == x), '') or '—'}" for x in letters], "",
              "Правило: отказ (ok=false) — только за блокирующее, с фактом из карточки; ≤2 причины; механику не повторять — её ловит lint. "
              "Каждую пару решай отдельно по вопросу её роли; комментарий ok — что именно проверено в карточке (ID, поле, номер), "

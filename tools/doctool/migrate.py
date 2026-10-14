@@ -81,8 +81,12 @@ def migrate(ctx, path=None, dry=False) -> tuple:
         if errs:
             errors.append(f"{rel}: после перевода не по схеме: " + "; ".join(errs[:3]))
             continue
-        if UN.write_unit(ctx, rel, v, k.get("fields"), dry=dry):
-            changed.append(rel)
+        try:
+            if UN.write_unit(ctx, rel, v, k.get("fields"), dry=dry):
+                changed.append(rel)
+        except ValueError as e:  # перевод потерял бы ID из полей (guard_id_fields) — файл не пишем
+            errors.append(str(e))
+            continue
         reg = ctx.plugins.migration_reports if ctx.plugins else {}
         for fn in reg.get(k["name"], []):
             left += [f"{rel}: {x}" for x in fn(ctx, v, rel)]
